@@ -5,21 +5,29 @@ import (
 	"strings"
 )
 
-// UHD thresholds. A source is 4K when either dimension reaches these values
-// or Plex labels it 4k/2160/uhd. Ultra-wide UHD encodes (3840x1600) are
-// caught by the width test.
+// UHD thresholds. A source is 4K when Plex labels it 4k/2160/uhd, or when
+// its dimensions are UHD-sized: at least 3840 wide with at least 1600 lines
+// (ultra-wide 2.40:1 UHD encodes are 3840x1600), or at least 2160 lines
+// with at least 2880 columns (4:3 and 3:2 UHD). Requiring both dimensions
+// keeps full side-by-side / over-under 3D 1080p rips (3840x1080, 1920x2160)
+// out.
 const (
-	UHDMinWidth  = 3840
-	UHDMinHeight = 2160
+	UHDMinWidth       = 3840
+	UHDMinHeightWide  = 1600
+	UHDMinHeight      = 2160
+	UHDMinWidthNarrow = 2880
 )
 
 // IsUHD decides whether a source with these attributes is 4K/UHD.
 func IsUHD(width, height int, videoResolution string) bool {
-	if width >= UHDMinWidth || height >= UHDMinHeight {
-		return true
-	}
 	switch NormalizeResolution(videoResolution) {
 	case "4k", "2160", "uhd":
+		return true
+	}
+	if width >= UHDMinWidth && height >= UHDMinHeightWide {
+		return true
+	}
+	if height >= UHDMinHeight && width >= UHDMinWidthNarrow {
 		return true
 	}
 	return false
@@ -64,9 +72,11 @@ func Screen(s Session) Verdict {
 	if s.Transcode == nil {
 		return Verdict{Reason: "direct-play", Detail: "no TranscodeSession element"}
 	}
-	vd := strings.ToLower(strings.TrimSpace(s.Transcode.VideoDecision))
-	ad := strings.ToLower(strings.TrimSpace(s.Transcode.AudioDecision))
-	if vd != "transcode" {
+	if s.Live {
+		return Verdict{Reason: "live-tv", Detail: "live session has no library item to resolve a source from"}
+	}
+	vd, ad := s.decisions()
+	if !s.IsVideoTranscode() {
 		detail := fmt.Sprintf("videoDecision=%q audioDecision=%q", vd, ad)
 		switch {
 		case vd == "copy" && ad == "transcode":
@@ -90,9 +100,12 @@ func Screen(s Session) Verdict {
 }
 
 // Judge performs the second pass with the library metadata. It matches the
-// session's Media id against the item's versions; when there is no match it
-// only concludes 4K if the item has a single version or every version is 4K.
-// Any remaining ambiguity resolves to "do not terminate".
+// session's Media id against the item's versions. A session media id that
+// is not among the item's versions means the item no longer describes what
+// is playing (split apart, re-matched or re-scanned mid-stream), so nothing
+// is terminated. Only when the session carries no selected Media at all is
+// the item judged by its versions: a single version, or every version being
+// 4K, is conclusive; anything else is left alone.
 func Judge(v Verdict, sources []SourceMedia) Verdict {
 	if !v.Candidate {
 		return v
@@ -106,30 +119,17 @@ func Judge(v Verdict, sources []SourceMedia) Verdict {
 	if v.MediaID != "" {
 		for i := range sources {
 			if sources[i].ID == v.MediaID {
-				src := sources[i]
-				v.Source = &src
-				v.Terminate = src.IsUHD()
-				if v.Terminate {
-					v.Reason = "4k-transcode"
-				} else {
-					v.Reason = "source-not-4k"
-				}
-				v.Detail = fmt.Sprintf("source media id=%s %s videoResolution=%q", src.ID, src.Dimensions(), src.VideoResolution)
-				return v
+				return v.decide(sources[i], fmt.Sprintf("source media id=%s %s videoResolution=%q", sources[i].ID, sources[i].Dimensions(), sources[i].VideoResolution))
 			}
 		}
+		v.Terminate = false
+		v.Reason = "media-not-found"
+		v.Detail = fmt.Sprintf("session media id %q is not among the %d library versions; leaving session alone", v.MediaID, len(sources))
+		return v
 	}
 	if len(sources) == 1 {
 		src := sources[0]
-		v.Source = &src
-		v.Terminate = src.IsUHD()
-		if v.Terminate {
-			v.Reason = "4k-transcode"
-		} else {
-			v.Reason = "source-not-4k"
-		}
-		v.Detail = fmt.Sprintf("sole library version id=%s %s videoResolution=%q (session media id %q not matched)", src.ID, src.Dimensions(), src.VideoResolution, v.MediaID)
-		return v
+		return v.decide(src, fmt.Sprintf("sole library version id=%s %s videoResolution=%q (session has no selected media)", src.ID, src.Dimensions(), src.VideoResolution))
 	}
 	allUHD, noneUHD := true, true
 	for _, src := range sources {
@@ -142,18 +142,34 @@ func Judge(v Verdict, sources []SourceMedia) Verdict {
 	switch {
 	case allUHD:
 		v.Terminate = true
-		v.Reason = "4k-transcode"
-		v.Detail = fmt.Sprintf("all %d library versions are 4K (session media id %q not matched)", len(sources), v.MediaID)
+		v.Reason = uhdReason(true)
+		v.Detail = fmt.Sprintf("all %d library versions are 4K (session has no selected media)", len(sources))
 	case noneUHD:
 		v.Terminate = false
-		v.Reason = "source-not-4k"
-		v.Detail = fmt.Sprintf("none of %d library versions is 4K (session media id %q not matched)", len(sources), v.MediaID)
+		v.Reason = uhdReason(false)
+		v.Detail = fmt.Sprintf("none of %d library versions is 4K (session has no selected media)", len(sources))
 	default:
 		v.Terminate = false
 		v.Reason = "ambiguous-source"
-		v.Detail = fmt.Sprintf("%d library versions with mixed resolutions and session media id %q not matched; leaving session alone", len(sources), v.MediaID)
+		v.Detail = fmt.Sprintf("%d library versions with mixed resolutions and no selected media; leaving session alone", len(sources))
 	}
 	return v
+}
+
+// decide records src as the resolved source and derives the verdict from it.
+func (v Verdict) decide(src SourceMedia, detail string) Verdict {
+	v.Source = &src
+	v.Terminate = src.IsUHD()
+	v.Reason = uhdReason(v.Terminate)
+	v.Detail = detail
+	return v
+}
+
+func uhdReason(uhd bool) string {
+	if uhd {
+		return "4k-transcode"
+	}
+	return "source-not-4k"
 }
 
 // Evidence renders the transcode and source facts for a log line. It never

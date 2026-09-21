@@ -14,10 +14,9 @@ import (
 )
 
 type staticTokens struct {
-	mu          sync.Mutex
-	token       string
-	err         error
-	invalidated int
+	mu    sync.Mutex
+	token string
+	err   error
 }
 
 func (s *staticTokens) Token() (string, error) {
@@ -26,14 +25,8 @@ func (s *staticTokens) Token() (string, error) {
 	return s.token, s.err
 }
 
-func (s *staticTokens) Invalidate() {
-	s.mu.Lock()
-	s.invalidated++
-	s.mu.Unlock()
-}
-
 type recordedRequest struct {
-	method, path, rawQuery, token, accept string
+	method, path, rawQuery, token, accept, requestURI string
 }
 
 func newRecordingServer(t *testing.T, status int, body string) (*httptest.Server, *[]recordedRequest) {
@@ -42,7 +35,7 @@ func newRecordingServer(t *testing.T, status int, body string) (*httptest.Server
 	var reqs []recordedRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		reqs = append(reqs, recordedRequest{r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Get("X-Plex-Token"), r.Header.Get("Accept")})
+		reqs = append(reqs, recordedRequest{r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Get("X-Plex-Token"), r.Header.Get("Accept"), r.RequestURI})
 		mu.Unlock()
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
@@ -135,6 +128,18 @@ func TestClientReadyAndSessionsHeaders(t *testing.T) {
 	}
 }
 
+func TestClientMetadataEscapesKeyOnce(t *testing.T) {
+	srv, reqs := newRecordingServer(t, 200, "")
+	c, _ := NewClient(srv.URL, time.Second, &staticTokens{token: "t0ken-value"}, "test")
+	if _, err := c.Metadata(context.Background(), "a b%c"); err != nil {
+		t.Fatal(err)
+	}
+	r := (*reqs)[0]
+	if r.path != "/library/metadata/a b%c" || r.requestURI != "/library/metadata/a%20b%25c" {
+		t.Fatalf("path %q uri %q", r.path, r.requestURI)
+	}
+}
+
 func TestClientMetadataValidatesKey(t *testing.T) {
 	srv, reqs := newRecordingServer(t, 200, "")
 	c, _ := NewClient(srv.URL, time.Second, &staticTokens{token: "t0ken-value"}, "test")
@@ -148,7 +153,7 @@ func TestClientMetadataValidatesKey(t *testing.T) {
 	}
 }
 
-func TestClientUnauthorizedInvalidatesToken(t *testing.T) {
+func TestClientUnauthorized(t *testing.T) {
 	srv, _ := newRecordingServer(t, 401, "")
 	tokens := &staticTokens{token: "t0ken-value"}
 	c, _ := NewClient(srv.URL, time.Second, tokens, "test")
@@ -156,21 +161,33 @@ func TestClientUnauthorizedInvalidatesToken(t *testing.T) {
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("want ErrUnauthorized, got %v", err)
 	}
-	if tokens.invalidated != 1 {
-		t.Fatalf("invalidated %d times", tokens.invalidated)
-	}
 	if strings.Contains(err.Error(), "t0ken-value") {
 		t.Fatalf("error leaks token: %v", err)
 	}
 }
 
 func TestClientHTTPError(t *testing.T) {
-	srv, _ := newRecordingServer(t, 503, "busy")
+	srv, _ := newRecordingServer(t, 503, strings.Repeat("busy", 1<<12))
 	c, _ := NewClient(srv.URL, time.Second, &staticTokens{token: "t0ken-value"}, "test")
 	err := c.Terminate(context.Background(), "abc", "x")
 	var he *HTTPError
 	if !errors.As(err, &he) || he.Status != 503 || he.Op != "terminate" {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestClientDoesNotFollowRedirects(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		http.Redirect(w, r, "http://127.0.0.1:1/elsewhere", http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+	c, _ := NewClient(srv.URL, time.Second, &staticTokens{token: "t0ken-value"}, "test")
+	err := c.Terminate(context.Background(), "abc", "x")
+	var he *HTTPError
+	if !errors.As(err, &he) || he.Status != http.StatusFound || hits != 1 {
+		t.Fatalf("redirect must not be followed: err=%v hits=%d", err, hits)
 	}
 }
 
@@ -234,14 +251,18 @@ func TestClientBodyLimit(t *testing.T) {
 }
 
 func TestClientIgnoresProxyEnvironment(t *testing.T) {
+	// Go never proxies loopback destinations, so a request-level check would
+	// pass vacuously; assert the transport configuration directly, and that a
+	// non-loopback host with a bogus proxy set still resolves the proxy to nil.
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
 	t.Setenv("http_proxy", "http://127.0.0.1:1")
-	t.Setenv("NO_PROXY", "")
-	t.Setenv("no_proxy", "")
-	srv, _ := newRecordingServer(t, 200, "")
-	c, _ := NewClient(srv.URL, time.Second, &staticTokens{token: "t0ken-value"}, "test")
-	if err := c.Ready(context.Background()); err != nil {
-		t.Fatalf("request went through the proxy: %v", err)
+	c, _ := NewClient("http://plex.example.internal:32400", time.Second, &staticTokens{token: "t0ken-value"}, "test")
+	tr, ok := c.http.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("unexpected transport %T", c.http.Transport)
+	}
+	if tr.Proxy != nil {
+		t.Fatal("transport must not consult proxy environment variables")
 	}
 }
 

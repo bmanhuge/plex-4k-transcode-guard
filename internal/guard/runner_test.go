@@ -127,8 +127,7 @@ func newTestRunner(t *testing.T, fake *fakePlex, mutate func(*Config)) *testEnv 
 	var logs bytes.Buffer
 	redactor := &Redactor{}
 	log := NewLogger(&logs, slog.LevelDebug, redactor)
-	tokens := NewTokenSource(cfg.PreferencesFile, func(tok string) { redactor.SetSecrets(tok) })
-	r := newRunner(cfg, log, fake, tokens, "test")
+	r := newRunner(cfg, log, fake, tokenSource(cfg, log, redactor), "test")
 	return &testEnv{runner: r, logs: &logs, dir: dir, prefs: prefs, fake: fake}
 }
 
@@ -281,12 +280,85 @@ func TestPollUnmatchedSourceFallsBackSafely(t *testing.T) {
 	fake.metadata["769612"] = fixture(t, "metadata_786405.xml")
 	fake.metadata["900001"] = fixture(t, "metadata_900001_mixed.xml")
 	env := newTestRunner(t, fake, nil)
-	res := env.runner.PollOnce(context.Background())
-	if res.Err != nil || res.Terminated != 0 || res.Candidates != 0 {
-		t.Fatalf("unexpected result: %s", res)
+	for i := 0; i < 3; i++ {
+		res := env.runner.PollOnce(context.Background())
+		if res.Err != nil || res.Terminated != 0 || res.Candidates != 0 {
+			t.Fatalf("poll %d: unexpected result: %s", i, res)
+		}
 	}
-	if !strings.Contains(env.logText(), "ambiguous-source") {
-		t.Fatal("ambiguous source should be logged")
+	if !strings.Contains(env.logText(), "media-not-found") || !strings.Contains(env.logText(), "ambiguous-source") {
+		t.Fatal("unmatched and ambiguous sources should be logged")
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	// Two sessions share rating key 769612 and neither id matches: the item
+	// is fetched once, and the miss is remembered instead of refetching.
+	if fake.metadataCalls["769612"] != 1 || fake.metadataCalls["900001"] != 1 {
+		t.Fatalf("unmatched ids must not refetch every poll: %v", fake.metadataCalls)
+	}
+}
+
+func TestDryRunDoesNotConsumeEnforceCooldown(t *testing.T) {
+	fake := mixedFake(t)
+	modeFile := filepath.Join(t.TempDir(), "mode")
+	env := newTestRunner(t, fake, func(c *Config) { c.DryRun = true; c.ModeFile = modeFile })
+	if res := env.runner.PollOnce(context.Background()); res.WouldTerminate != 2 {
+		t.Fatalf("dry-run: %s", res)
+	}
+	if err := os.WriteFile(modeFile, []byte("enforce"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := env.runner.PollOnce(context.Background())
+	if res.Terminated != 2 || res.Skipped != 1 {
+		t.Fatalf("sessions reported in dry-run must be acted on immediately after switching to enforce: %s", res)
+	}
+}
+
+func TestPollMetadataFailureIsNegativelyCachedAndWarnedOnce(t *testing.T) {
+	fake := mixedFake(t)
+	fake.metadataErr = map[string]error{"769612": &HTTPError{Op: "metadata", Status: 404}}
+	env := newTestRunner(t, fake, func(c *Config) { c.Cooldown = 0 })
+	for i := 0; i < 3; i++ {
+		env.runner.PollOnce(context.Background())
+	}
+	fake.mu.Lock()
+	calls := fake.metadataCalls["769612"]
+	fake.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("failed lookup must be cached, got %d calls", calls)
+	}
+	if n := strings.Count(env.logText(), "cannot resolve source media"); n != 1 {
+		t.Fatalf("warning logged %d times, want once", n)
+	}
+	// After the negative TTL the lookup is retried and, on success, the
+	// warning is cleared.
+	fake.mu.Lock()
+	delete(fake.metadataErr, "769612")
+	fake.mu.Unlock()
+	env.runner.now = func() time.Time { return time.Now().Add(2 * metadataNegativeTTL) }
+	env.runner.cooldown.now = env.runner.now
+	res := env.runner.PollOnce(context.Background())
+	if res.Terminated != 2 || !strings.Contains(env.logText(), "condition cleared") {
+		t.Fatalf("after negative TTL: %s", res)
+	}
+}
+
+func TestCachePrunesExpiredEntries(t *testing.T) {
+	fake := mixedFake(t)
+	env := newTestRunner(t, fake, nil)
+	env.runner.PollOnce(context.Background())
+	env.runner.mu.Lock()
+	before := len(env.runner.cache)
+	env.runner.mu.Unlock()
+	if before == 0 {
+		t.Fatal("expected cached items")
+	}
+	env.runner.now = func() time.Time { return time.Now().Add(2 * metadataCacheTTL) }
+	env.runner.pruneCache()
+	env.runner.mu.Lock()
+	defer env.runner.mu.Unlock()
+	if len(env.runner.cache) != 0 {
+		t.Fatalf("expired entries remain: %d", len(env.runner.cache))
 	}
 }
 
@@ -332,12 +404,8 @@ func TestPollUnauthorizedTriggersReload(t *testing.T) {
 	if !strings.Contains(env.logText(), "rejected the token") {
 		t.Fatal("expected a warning about the rejected token")
 	}
-	// A rotated token is picked up on the next poll.
+	// A rotated token is picked up on the next poll and its load is logged.
 	writePrefs(t, env.prefs, "rotatedTOKEN000009")
-	future := time.Now().Add(2 * time.Second)
-	if err := os.Chtimes(env.prefs, future, future); err != nil {
-		t.Fatal(err)
-	}
 	fake.mu.Lock()
 	fake.sessionsErr = nil
 	fake.mu.Unlock()
@@ -347,6 +415,9 @@ func TestPollUnauthorizedTriggersReload(t *testing.T) {
 	}
 	if tok, _ := env.runner.tokens.Token(); tok != "rotatedTOKEN000009" {
 		t.Fatalf("token not reloaded: %q", tok)
+	}
+	if n := strings.Count(env.logText(), "plex token loaded"); n != 2 {
+		t.Fatalf("token loads logged %d times, want 2 (initial + rotation)", n)
 	}
 	if strings.Contains(env.logText(), "rotatedTOKEN000009") {
 		t.Fatal("rotated token leaked into logs")
@@ -399,15 +470,25 @@ func TestPollModeFileOverride(t *testing.T) {
 	if n := strings.Count(env.logText(), "effective mode"); n != 3 {
 		t.Fatalf("mode change logged %d times, want 3", n)
 	}
+	// Writing the baseline mode into the file is still a visible change of
+	// source, so an operator can confirm the file took effect.
+	if err := os.WriteFile(modeFile, []byte("dry-run"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env.runner.PollOnce(context.Background())
+	if !strings.Contains(env.logText(), "mode=dry-run source=file") {
+		t.Fatal("mode source change must be logged")
+	}
 }
 
-func TestPollInvalidModeFileWarnsOnce(t *testing.T) {
+func TestPollInvalidModeFileWarnsOnceAndNeverEscalates(t *testing.T) {
 	fake := mixedFake(t)
 	modeFile := filepath.Join(t.TempDir(), "mode")
 	if err := os.WriteFile(modeFile, []byte("nuke"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	env := newTestRunner(t, fake, func(c *Config) { c.DryRun = true; c.ModeFile = modeFile })
+	// Enforce baseline plus a garbage override must run in dry-run.
+	env := newTestRunner(t, fake, func(c *Config) { c.DryRun = false; c.ModeFile = modeFile })
 	for i := 0; i < 3; i++ {
 		if res := env.runner.PollOnce(context.Background()); res.Mode != ModeDryRun || res.Terminated != 0 {
 			t.Fatalf("poll %d: %s", i, res)

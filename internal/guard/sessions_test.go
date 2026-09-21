@@ -33,29 +33,29 @@ func TestParseSessionsMixed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Size != 9 || len(parsed.Items) != 9 || parsed.Videos != 8 || parsed.Tracks != 1 {
-		t.Fatalf("counts: size=%d items=%d videos=%d tracks=%d", parsed.Size, len(parsed.Items), parsed.Videos, parsed.Tracks)
+	if len(parsed.Items) != 9 || parsed.Videos != 8 {
+		t.Fatalf("counts: items=%d videos=%d", len(parsed.Items), parsed.Videos)
 	}
 	s := parsed.Items[0]
-	if s.Kind != "Video" || s.SessionKey != "7" || s.RatingKey != "769612" || s.Title != "Example Movie UHD" || s.User != "viewer-a" || s.UserID != "101" {
+	if s.Kind != "Video" || s.SessionKey != "7" || s.RatingKey != "769612" || s.Title != "Example Movie UHD" || s.User != "viewer-a" || s.Live {
 		t.Fatalf("item 0 basics: %+v", s)
 	}
 	if s.SessionID != "e6gmj1bjf7jlbz7hu5cqcags" {
 		t.Fatalf("session id %q", s.SessionID)
 	}
-	if s.Transcode == nil || s.Transcode.VideoDecision != "transcode" || s.Transcode.AudioDecision != "transcode" || s.Transcode.Width != 1280 || s.Transcode.Height != 720 || !s.Transcode.Throttled {
+	if s.Transcode == nil || s.Transcode.VideoDecision != "transcode" || s.Transcode.AudioDecision != "transcode" || s.Transcode.Width != 1280 || s.Transcode.Height != 720 || s.Transcode.Protocol != "dash" {
 		t.Fatalf("transcode: %+v", s.Transcode)
 	}
 	m, ok := s.SelectedMedia()
-	if !ok || m.ID != "1399271" || m.Width != 1280 || m.Height != 720 || m.VideoResolution != "720p" || m.Protocol != "dash" {
+	if !ok || m.ID != "1399271" || m.Width != 1280 || m.Height != 720 || m.VideoResolution != "720p" {
 		t.Fatalf("selected media: %+v ok=%v", m, ok)
 	}
 	p, ok := m.SelectedPart()
-	if !ok || p.ID != "1400083" || p.Decision != "transcode" {
+	if !ok || len(p.Streams) != 2 {
 		t.Fatalf("selected part: %+v", p)
 	}
 	st, ok := p.VideoStream()
-	if !ok || st.DisplayTitle != "4K (HEVC Main 10)" || st.Width != 1280 || st.StreamType != 1 {
+	if !ok || st.DisplayTitle != "4K (HEVC Main 10)" || st.StreamType != 1 {
 		t.Fatalf("video stream: %+v", st)
 	}
 	if s.Player.Product != "Plex for Samsung" || s.Player.State != "playing" {
@@ -81,7 +81,7 @@ func TestParseSessionsMixed(t *testing.T) {
 
 func TestParseSessionsEmpty(t *testing.T) {
 	parsed, err := ParseSessions(fixture(t, "sessions_empty.xml"))
-	if err != nil || parsed.Size != 0 || len(parsed.Items) != 0 {
+	if err != nil || parsed.Videos != 0 || len(parsed.Items) != 0 {
 		t.Fatalf("got %+v err=%v", parsed, err)
 	}
 }
@@ -130,8 +130,14 @@ func TestIsUHD(t *testing.T) {
 		{3840, 2160, "4k", true},
 		{3840, 1600, "4k", true},
 		{3840, 1600, "", true},
-		{0, 2160, "", true},
+		{3840, 2160, "", true},
 		{4096, 1716, "4k", true},
+		{4096, 1716, "", true},
+		{2880, 2160, "", true},
+		{3840, 1080, "1080", false}, // full side-by-side 3D 1080p rip
+		{1920, 2160, "1080", false}, // full over-under 3D 1080p rip
+		{0, 2160, "", false},
+		{3840, 0, "", false},
 		{0, 0, "4k", true},
 		{0, 0, "4K", true},
 		{0, 0, "2160p", true},
@@ -191,12 +197,23 @@ func TestScreen(t *testing.T) {
 			t.Errorf("key %s: Screen must never decide to terminate", tc.key)
 		}
 	}
-	// Direct stream with audio copied is reported as direct-stream, and a
-	// synthetic session with no transcode element at all is direct play.
+	// Direct stream with audio copied is reported as direct-stream.
 	ds := byKey["20"]
-	ds.Transcode.AudioDecision = "copy"
+	ds.Transcode = &Transcode{VideoDecision: "copy", AudioDecision: "copy"}
 	if v := Screen(ds); v.Reason != "direct-stream" || v.Candidate {
 		t.Fatalf("direct stream: %+v", v)
+	}
+	// Live TV transcodes are never candidates, even when video is transcoded.
+	live := byKey["7"]
+	live.Live = true
+	if v := Screen(live); v.Reason != "live-tv" || v.Candidate {
+		t.Fatalf("live tv: %+v", v)
+	}
+	// Padded decisions are normalised consistently by both predicates.
+	padded := byKey["7"]
+	padded.Transcode = &Transcode{VideoDecision: " Transcode ", AudioDecision: "copy"}
+	if !padded.IsVideoTranscode() || !Screen(padded).Candidate {
+		t.Fatal("padded decision must still count as a video transcode")
 	}
 }
 
@@ -227,9 +244,11 @@ func TestJudge(t *testing.T) {
 		{"unselected media, every version 4K", byKey["25"], meta("metadata_900001.xml"), want{true, "4k-transcode", ""}},
 		{"unselected media, mixed versions", byKey["25"], meta("metadata_900001_mixed.xml"), want{false, "ambiguous-source", ""}},
 		{"no metadata media", byKey["7"], nil, want{false, "source-unknown", ""}},
-		{"unmatched id, sole 4K version", byKey["16"], meta("metadata_769612.xml"), want{true, "4k-transcode", "1399271"}},
-		{"unmatched id, sole 1080p version", byKey["7"], meta("metadata_786405.xml"), want{false, "source-not-4k", "1477136"}},
-		{"unmatched id, mixed versions", byKey["7"], meta("metadata_800001.xml"), want{false, "ambiguous-source", ""}},
+		{"unmatched id, sole 4K version", byKey["16"], meta("metadata_769612.xml"), want{false, "media-not-found", ""}},
+		{"unmatched id, sole 1080p version", byKey["7"], meta("metadata_786405.xml"), want{false, "media-not-found", ""}},
+		{"unmatched id, mixed versions", byKey["7"], meta("metadata_800001.xml"), want{false, "media-not-found", ""}},
+		{"no selected media, sole 4K version", noSelected(byKey["7"]), meta("metadata_769612.xml"), want{true, "4k-transcode", "1399271"}},
+		{"no selected media, sole 1080p version", noSelected(byKey["7"]), meta("metadata_786405.xml"), want{false, "source-not-4k", "1477136"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -261,6 +280,13 @@ func TestJudge(t *testing.T) {
 	if dp.Terminate || dp.Candidate {
 		t.Fatalf("direct play must stay untouched: %+v", dp)
 	}
+}
+
+// noSelected returns a copy of s whose media list has no selected entry and
+// more than one candidate, so Screen yields an empty MediaID.
+func noSelected(s Session) Session {
+	s.Media = []Media{{ID: "x1"}, {ID: "x2"}}
+	return s
 }
 
 func TestEvidenceIsSanitized(t *testing.T) {

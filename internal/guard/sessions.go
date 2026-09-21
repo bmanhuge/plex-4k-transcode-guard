@@ -10,21 +10,19 @@ import (
 	"strings"
 )
 
-// Session is one entry of /status/sessions, reduced to what the guard needs.
+// Session is one entry of /status/sessions, reduced to what the guard uses.
 type Session struct {
 	// Kind is the element name: Video, Track or Photo.
 	Kind string
 
 	SessionKey       string
 	RatingKey        string
-	Type             string
 	Title            string
-	ParentTitle      string
 	GrandparentTitle string
-	Live             bool
+	// Live is set for Live TV / DVR sessions, which have no library item.
+	Live bool
 
 	User   string
-	UserID string
 	Player Player
 
 	// SessionID is the id attribute of the <Session> child element. It is the
@@ -40,29 +38,20 @@ type Session struct {
 	Media []Media
 }
 
-// Player describes the client device (no addresses are kept).
+// Player describes the client (no addresses or identifiers are kept).
 type Player struct {
-	Product  string
-	Platform string
-	State    string
-	Title    string
-	Local    bool
+	Product string
+	State   string
 }
 
 // Transcode mirrors the <TranscodeSession> element. Width and Height are the
 // OUTPUT dimensions.
 type Transcode struct {
-	Key              string
-	VideoDecision    string
-	AudioDecision    string
-	SubtitleDecision string
-	Protocol         string
-	Container        string
-	VideoCodec       string
-	SourceVideoCodec string
-	Width            int
-	Height           int
-	Throttled        bool
+	VideoDecision string
+	AudioDecision string
+	Protocol      string
+	Width         int
+	Height        int
 }
 
 // Media mirrors a <Media> element of the sessions document.
@@ -71,40 +60,28 @@ type Media struct {
 	Width           int
 	Height          int
 	VideoResolution string
-	Protocol        string
-	Container       string
-	VideoCodec      string
 	Selected        bool
 	Parts           []Part
 }
 
 // Part mirrors a <Part> element.
 type Part struct {
-	ID       string
-	Decision string
 	Selected bool
 	Streams  []Stream
 }
 
-// Stream mirrors a <Stream> element. StreamType 1 is video.
+// Stream mirrors a <Stream> element. StreamType 1 is video. DisplayTitle is
+// derived by Plex from the source stream and is kept as log evidence only.
 type Stream struct {
 	StreamType   int
-	Width        int
-	Height       int
 	DisplayTitle string
-	Decision     string
-	Codec        string
 	Selected     bool
 }
 
 // Sessions is the parsed /status/sessions document.
 type Sessions struct {
-	Size   int
 	Items  []Session
 	Videos int
-	Tracks int
-	Photos int
-	Other  int
 }
 
 // DisplayTitle renders a human-readable title ("Show - Episode" for
@@ -144,7 +121,7 @@ func (m Media) SelectedPart() (p Part, ok bool) {
 	return Part{}, false
 }
 
-// VideoStream returns the selected (or sole) video stream of the part.
+// VideoStream returns the selected (or first) video stream of the part.
 func (p Part) VideoStream() (st Stream, ok bool) {
 	var first *Stream
 	for i := range p.Streams {
@@ -165,12 +142,22 @@ func (p Part) VideoStream() (st Stream, ok bool) {
 	return Stream{}, false
 }
 
+// decision returns the normalised video and audio decisions ("transcode",
+// "copy", or "" when there is no TranscodeSession).
+func (s Session) decisions() (video, audio string) {
+	if s.Transcode == nil {
+		return "", ""
+	}
+	return strings.ToLower(strings.TrimSpace(s.Transcode.VideoDecision)), strings.ToLower(strings.TrimSpace(s.Transcode.AudioDecision))
+}
+
 // IsVideoTranscode reports whether the session is a video session whose
 // video stream is being transcoded (videoDecision="transcode"). Direct play
 // (no TranscodeSession), direct stream (videoDecision="copy") and
 // audio-only transcodes all return false.
 func (s Session) IsVideoTranscode() bool {
-	return s.Kind == "Video" && s.Transcode != nil && strings.EqualFold(s.Transcode.VideoDecision, "transcode")
+	video, _ := s.decisions()
+	return s.Kind == "Video" && video == "transcode"
 }
 
 type xmlAttrs struct {
@@ -262,57 +249,35 @@ func ParseSessions(data []byte) (Sessions, error) {
 	if err != nil {
 		return Sessions{}, fmt.Errorf("sessions: %w", err)
 	}
-	out := Sessions{Size: c.int("size")}
+	var out Sessions
 	for _, it := range c.Items {
 		s := Session{
 			Kind:             it.XMLName.Local,
 			SessionKey:       it.get("sessionKey"),
 			RatingKey:        it.get("ratingKey"),
-			Type:             it.get("type"),
 			Title:            it.get("title"),
-			ParentTitle:      it.get("parentTitle"),
 			GrandparentTitle: it.get("grandparentTitle"),
 			Live:             it.flag("live"),
 		}
-		switch s.Kind {
-		case "Video":
+		if s.Kind == "Video" {
 			out.Videos++
-		case "Track":
-			out.Tracks++
-		case "Photo":
-			out.Photos++
-		default:
-			out.Other++
 		}
 		if it.User != nil {
 			s.User = it.User.get("title")
-			s.UserID = it.User.get("id")
 		}
 		if it.Player != nil {
-			s.Player = Player{
-				Product:  it.Player.get("product"),
-				Platform: it.Player.get("platform"),
-				State:    it.Player.get("state"),
-				Title:    it.Player.get("title"),
-				Local:    it.Player.flag("local"),
-			}
+			s.Player = Player{Product: it.Player.get("product"), State: it.Player.get("state")}
 		}
 		if it.Session != nil {
 			s.SessionID = strings.TrimSpace(it.Session.get("id"))
 		}
 		if it.Transcode != nil {
 			s.Transcode = &Transcode{
-				Key:              it.Transcode.get("key"),
-				VideoDecision:    it.Transcode.get("videoDecision"),
-				AudioDecision:    it.Transcode.get("audioDecision"),
-				SubtitleDecision: it.Transcode.get("subtitleDecision"),
-				Protocol:         it.Transcode.get("protocol"),
-				Container:        it.Transcode.get("container"),
-				VideoCodec:       it.Transcode.get("videoCodec"),
-				SourceVideoCodec: it.Transcode.get("sourceVideoCodec"),
-				Width:            it.Transcode.int("width"),
-				Height:           it.Transcode.int("height"),
-				Throttled:        it.Transcode.flag("throttled"),
+				VideoDecision: it.Transcode.get("videoDecision"),
+				AudioDecision: it.Transcode.get("audioDecision"),
+				Protocol:      it.Transcode.get("protocol"),
+				Width:         it.Transcode.int("width"),
+				Height:        it.Transcode.int("height"),
 			}
 		}
 		for _, xm := range it.Media {
@@ -321,21 +286,14 @@ func ParseSessions(data []byte) (Sessions, error) {
 				Width:           xm.int("width"),
 				Height:          xm.int("height"),
 				VideoResolution: xm.get("videoResolution"),
-				Protocol:        xm.get("protocol"),
-				Container:       xm.get("container"),
-				VideoCodec:      xm.get("videoCodec"),
 				Selected:        xm.flag("selected"),
 			}
 			for _, xp := range xm.Parts {
-				p := Part{ID: xp.get("id"), Decision: xp.get("decision"), Selected: xp.flag("selected")}
+				p := Part{Selected: xp.flag("selected")}
 				for _, xs := range xp.Streams {
 					p.Streams = append(p.Streams, Stream{
 						StreamType:   xs.int("streamType"),
-						Width:        xs.int("width"),
-						Height:       xs.int("height"),
 						DisplayTitle: xs.get("displayTitle"),
-						Decision:     xs.get("decision"),
-						Codec:        xs.get("codec"),
 						Selected:     xs.flag("selected"),
 					})
 				}

@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 )
 
 // ErrNoToken is returned when Preferences.xml exists but carries no
@@ -18,77 +17,61 @@ var ErrNoToken = errors.New("no PlexOnlineToken in Plex preferences (server not 
 // maxPreferencesBytes bounds how much of Preferences.xml is read.
 const maxPreferencesBytes = 1 << 20
 
-// TokenSource reads the Plex server token from Preferences.xml. It caches
-// the token and transparently re-reads the file whenever its size or
-// modification time changes, or after Invalidate is called (for example on
-// an HTTP 401). The token value itself is never logged or formatted into
-// errors.
+// TokenSource reads the Plex server token from Preferences.xml. The file is
+// small and is re-read on every call, so a rotated or newly claimed token is
+// picked up on the next poll without any invalidation protocol. The token
+// value itself is never logged or formatted into errors.
 type TokenSource struct {
 	path     string
 	onChange func(token string)
 
-	mu      sync.Mutex
-	token   string
-	loaded  bool
-	modTime time.Time
-	size    int64
+	mu   sync.Mutex
+	last string
 }
 
 // NewTokenSource creates a TokenSource for path. onChange, when non-nil, is
-// invoked synchronously with every newly loaded token before it is returned
-// to callers, so a Redactor can be updated first.
+// invoked synchronously whenever a different token is loaded, before it is
+// returned to callers, so a Redactor can be updated first.
 func NewTokenSource(path string, onChange func(token string)) *TokenSource {
 	return &TokenSource{path: path, onChange: onChange}
 }
 
-// Token returns the current token, reloading it from disk if the file
-// changed. Errors never contain the token.
+// Token returns the current token. Errors never contain the token.
 func (t *TokenSource) Token() (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	token, err := t.read()
+	if err != nil {
+		t.last = ""
+		return "", err
+	}
+	if token != t.last {
+		t.last = token
+		if t.onChange != nil {
+			t.onChange(token)
+		}
+	}
+	return token, nil
+}
+
+func (t *TokenSource) read() (string, error) {
 	info, err := os.Stat(t.path)
 	if err != nil {
-		t.loaded = false
-		t.token = ""
 		if errors.Is(err, os.ErrNotExist) {
 			return "", fmt.Errorf("preferences file not found: %w", err)
 		}
 		return "", fmt.Errorf("stat preferences file: %w", err)
 	}
-	if t.loaded && info.ModTime().Equal(t.modTime) && info.Size() == t.size {
-		return t.token, nil
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("preferences file %s is not a regular file", t.path)
 	}
-
 	f, err := os.Open(t.path)
 	if err != nil {
-		t.loaded = false
-		t.token = ""
 		return "", fmt.Errorf("open preferences file: %w", err)
 	}
 	defer f.Close()
-	token, err := ParsePreferencesToken(io.LimitReader(f, maxPreferencesBytes))
-	if err != nil {
-		t.loaded = false
-		t.token = ""
-		return "", err
-	}
-	changed := token != t.token
-	t.token = token
-	t.loaded = true
-	t.modTime = info.ModTime()
-	t.size = info.Size()
-	if changed && t.onChange != nil {
-		t.onChange(token)
-	}
-	return token, nil
-}
-
-// Invalidate forces the next Token call to re-read the file.
-func (t *TokenSource) Invalidate() {
-	t.mu.Lock()
-	t.loaded = false
-	t.mu.Unlock()
+	return ParsePreferencesToken(io.LimitReader(f, maxPreferencesBytes))
 }
 
 // ParsePreferencesToken extracts PlexOnlineToken from a Preferences.xml

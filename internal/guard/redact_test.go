@@ -67,6 +67,16 @@ func TestLoggerWithAttrsAndGroup(t *testing.T) {
 	}
 }
 
+func TestLoggerInlinesEmptyKeyGroup(t *testing.T) {
+	var buf bytes.Buffer
+	log := NewLogger(&buf, slog.LevelDebug, nil).WithGroup("g")
+	log.Info("msg", slog.Group("", slog.String("a", "1")), slog.Group("inner", slog.Int("n", 2)))
+	out := buf.String()
+	if !strings.Contains(out, " g.a=1") || !strings.Contains(out, " g.inner.n=2") || strings.Contains(out, "g..") {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
 func TestParseLogLevel(t *testing.T) {
 	cases := map[string]slog.Level{"debug": slog.LevelDebug, "INFO": slog.LevelInfo, "warn": slog.LevelWarn, "warning": slog.LevelWarn, "error": slog.LevelError, "": slog.LevelInfo, "junk": slog.LevelInfo}
 	for in, want := range cases {

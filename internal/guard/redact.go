@@ -124,7 +124,10 @@ func (h *lineHandler) writeAttr(b *strings.Builder, prefix string, a slog.Attr) 
 		return
 	}
 	key := a.Key
-	if prefix != "" {
+	switch {
+	case key == "":
+		key = prefix // an empty key inlines into the enclosing group
+	case prefix != "":
 		key = prefix + "." + key
 	}
 	if a.Value.Kind() == slog.KindGroup {
@@ -133,13 +136,13 @@ func (h *lineHandler) writeAttr(b *strings.Builder, prefix string, a slog.Attr) 
 		}
 		return
 	}
+	if key == "" {
+		return
+	}
 	b.WriteByte(' ')
 	b.WriteString(key)
 	b.WriteByte('=')
 	val := a.Value.String()
-	if a.Value.Kind() == slog.KindDuration {
-		val = a.Value.Duration().String()
-	}
 	if val == "" || strings.ContainsAny(val, " \t\r\n\"=") {
 		b.WriteString(strconv.Quote(val))
 	} else {

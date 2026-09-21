@@ -10,13 +10,14 @@ import (
 // Mode is the effective operating mode for a poll.
 type Mode int
 
+// The zero value is ModeOff so an unset or unparsed Mode can never enforce.
 const (
-	// ModeEnforce polls, classifies and terminates matching sessions.
-	ModeEnforce Mode = iota
+	// ModeOff skips polling entirely until the mode changes.
+	ModeOff Mode = iota
 	// ModeDryRun polls and classifies but never calls the terminate endpoint.
 	ModeDryRun
-	// ModeOff skips polling entirely until the mode changes.
-	ModeOff
+	// ModeEnforce polls, classifies and terminates matching sessions.
+	ModeEnforce
 )
 
 // String returns the canonical spelling used in logs and in the mode file.
@@ -42,14 +43,16 @@ func ParseMode(s string) (Mode, bool) {
 	case "off", "disabled", "disable", "pause", "paused":
 		return ModeOff, true
 	}
-	return ModeEnforce, false
+	return ModeOff, false
 }
 
 // ResolveMode computes the effective mode. The environment (dryRun) is the
 // baseline. When modeFile is non-empty and the file exists with a valid
 // value, the file wins; a missing file means "use the baseline". An
-// unreadable or invalid file is reported through warning and the baseline
-// is used, which is the safer of the two when the baseline is dry-run.
+// unreadable or invalid file never escalates: the result is the baseline
+// or dry-run, whichever is less permissive, and the problem is reported
+// through warning. This keeps a mistyped "dry-run" from silently leaving
+// enforcement on.
 func ResolveMode(dryRun bool, modeFile string) (mode Mode, source string, warning string) {
 	mode = ModeEnforce
 	if dryRun {
@@ -64,11 +67,13 @@ func ResolveMode(dryRun bool, modeFile string) (mode Mode, source string, warnin
 		if errors.Is(err, os.ErrNotExist) {
 			return mode, source, ""
 		}
-		return mode, source, fmt.Sprintf("mode file %s cannot be read (%v); using %s from the environment", modeFile, err, mode)
+		safe := min(mode, ModeDryRun)
+		return safe, "fallback", fmt.Sprintf("mode file %s cannot be read (%v); running in %s until it is fixed or removed", modeFile, err, safe)
 	}
 	fileMode, ok := ParseMode(string(data))
 	if !ok {
-		return mode, source, fmt.Sprintf("mode file %s does not contain enforce, dry-run or off; using %s from the environment", modeFile, mode)
+		safe := min(mode, ModeDryRun)
+		return safe, "fallback", fmt.Sprintf("mode file %s does not contain enforce, dry-run or off; running in %s until it is fixed or removed", modeFile, safe)
 	}
 	return fileMode, "file", ""
 }

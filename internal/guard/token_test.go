@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -81,7 +82,7 @@ func TestTokenSourceReloadsOnChange(t *testing.T) {
 	if err != nil || tok != "firstTOKEN0001" {
 		t.Fatalf("got %q %v", tok, err)
 	}
-	// Unchanged file: cached, no callback.
+	// Unchanged file: same token, no callback.
 	if tok, err := ts.Token(); err != nil || tok != "firstTOKEN0001" {
 		t.Fatalf("got %q %v", tok, err)
 	}
@@ -89,13 +90,8 @@ func TestTokenSourceReloadsOnChange(t *testing.T) {
 		t.Fatalf("onChange calls: %v", seen)
 	}
 
-	// Different content with a different size, and an explicit mtime bump so
-	// coarse filesystem timestamps cannot hide the change.
+	// A rewritten file is picked up immediately, whatever its timestamps.
 	writePrefs(t, path, "secondTOKEN00002")
-	future := time.Now().Add(2 * time.Second)
-	if err := os.Chtimes(path, future, future); err != nil {
-		t.Fatal(err)
-	}
 	tok, err = ts.Token()
 	if err != nil || tok != "secondTOKEN00002" {
 		t.Fatalf("got %q %v", tok, err)
@@ -103,14 +99,25 @@ func TestTokenSourceReloadsOnChange(t *testing.T) {
 	if len(seen) != 2 || seen[1] != "secondTOKEN00002" {
 		t.Fatalf("onChange calls: %v", seen)
 	}
-
-	// Invalidate forces a re-read; same content means no callback.
-	ts.Invalidate()
-	if tok, err := ts.Token(); err != nil || tok != "secondTOKEN00002" {
-		t.Fatalf("got %q %v", tok, err)
+	if tok, err := ts.Token(); err != nil || tok != "secondTOKEN00002" || len(seen) != 2 {
+		t.Fatalf("onChange must not fire for an unchanged token: %q %v %v", tok, err, seen)
 	}
-	if len(seen) != 2 {
-		t.Fatalf("onChange must not fire for an unchanged token: %v", seen)
+}
+
+func TestTokenSourceRejectsNonRegularFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fifo")
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		t.Skipf("mkfifo: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := NewTokenSource(path, nil).Token(); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("reading a FIFO must not block")
 	}
 }
 
@@ -136,10 +143,6 @@ func TestTokenSourceUnclaimedThenClaimed(t *testing.T) {
 		t.Fatalf("want ErrNoToken, got %v", err)
 	}
 	writePrefs(t, path, "claimedTOKEN0003")
-	future := time.Now().Add(2 * time.Second)
-	if err := os.Chtimes(path, future, future); err != nil {
-		t.Fatal(err)
-	}
 	if tok, err := ts.Token(); err != nil || tok != "claimedTOKEN0003" {
 		t.Fatalf("got %q %v", tok, err)
 	}

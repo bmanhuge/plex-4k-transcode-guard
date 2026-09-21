@@ -22,7 +22,8 @@ RUN set -eu; \
         -o /root-layer/usr/local/bin/plex-4k-guard ./cmd/plex-4k-guard; \
     chmod 0755 /root-layer/usr/local/bin/plex-4k-guard \
         /root-layer/etc/s6-overlay/s6-rc.d/init-mod-plex-4k-guard/run \
-        /root-layer/etc/s6-overlay/s6-rc.d/svc-mod-plex-4k-guard/run; \
+        /root-layer/etc/s6-overlay/s6-rc.d/svc-mod-plex-4k-guard/run \
+        /root-layer/etc/s6-overlay/s6-rc.d/svc-mod-plex-4k-guard/finish; \
     chown -R 0:0 /root-layer
 
 # Final stage: a single-layer image. The LinuxServer.io docker-mods loader

@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/bmanhuge/plex-4k-transcode-guard/internal/guard"
 )
@@ -18,9 +17,10 @@ import (
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
-// fatalConfigDelay keeps a misconfigured service from being restarted by
-// s6 in a hot loop.
-const fatalConfigDelay = 30 * time.Second
+// exitConfig is the exit status for an invalid configuration. The s6
+// finish script maps it to a permanent "down" so the service is not
+// restarted until the container is recreated with a valid environment.
+const exitConfig = 64
 
 func main() {
 	if len(os.Args) > 1 {
@@ -60,22 +60,14 @@ func run() int {
 	cfg, cfgErr := guard.LoadConfig(os.Getenv)
 	logger := guard.NewLogger(os.Stdout, guard.ParseLogLevel(cfg.LogLevel), redactor)
 	if cfgErr != nil {
-		logger.Error("invalid configuration; refusing to start", "err", cfgErr, "retry_in", fatalConfigDelay)
-		select {
-		case <-ctx.Done():
-		case <-time.After(fatalConfigDelay):
-		}
-		return 1
+		logger.Error("invalid configuration; the guard stays down until the container is recreated with a valid environment", "err", cfgErr)
+		return exitConfig
 	}
 
 	runner, err := guard.NewRunner(cfg, logger, redactor, version)
 	if err != nil {
-		logger.Error("cannot initialise", "err", err, "retry_in", fatalConfigDelay)
-		select {
-		case <-ctx.Done():
-		case <-time.After(fatalConfigDelay):
-		}
-		return 1
+		logger.Error("cannot initialise; the guard stays down", "err", err)
+		return exitConfig
 	}
 	if err := runner.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		logger.Error("stopped with error", "err", err)

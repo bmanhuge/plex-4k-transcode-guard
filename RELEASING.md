@@ -60,5 +60,6 @@ DOCKER_MODS=ghcr.io/bmanhuge/plex-4k-transcode-guard:v1.0.0
 ```bash
 make lint test race          # gofmt, vet, staticcheck, unit tests
 make image verify-image      # single-layer image, --version runs
+docker buildx build --output type=local,dest=modroot .
 MOD_SOURCE=sideload:$PWD/modroot ./scripts/e2e-sideload.sh   # see README "Validation"
 ```

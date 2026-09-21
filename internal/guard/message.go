@@ -3,6 +3,8 @@ package guard
 import (
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +21,8 @@ const DefaultStopMessage = "You are not allowed to transcode 4K content, please 
 // MaxMessageLength caps the reason sent to Plex (in runes).
 const MaxMessageLength = 1000
 
-// maxMessageFileBytes bounds how much of the message file is read.
+// maxMessageFileBytes bounds how much of the message file is read. Anything
+// beyond it is ignored (the text is truncated to MaxMessageLength anyway).
 const maxMessageFileBytes = 64 << 10
 
 // MessageFileMode is the permission applied to a freshly created file.
@@ -61,7 +64,7 @@ func (m *MessageSource) Message() (message, source, warning string) {
 	case errors.Is(err, os.ErrNotExist):
 		created, cerr := EnsureMessageFile(m.path, DefaultStopMessage)
 		if cerr != nil {
-			return m.remember(DefaultStopMessage, "default", fmt.Sprintf("message file %s is missing and could not be created (%v); using the default message", m.path, cerr), nil)
+			return m.remember(DefaultStopMessage, "default", fmt.Sprintf("message file %s is missing and could not be created (%v); using the default message", m.path, stableError(cerr)), nil)
 		}
 		if created {
 			return m.remember(DefaultStopMessage, "file", "", nil)
@@ -74,7 +77,7 @@ func (m *MessageSource) Message() (message, source, warning string) {
 		return m.remember(DefaultStopMessage, "default", fmt.Sprintf("message file %s cannot be read (%v); using the default message", m.path, err), nil)
 	}
 
-	data, err := readSmallFile(m.path, maxMessageFileBytes)
+	data, err := readPrefix(m.path, maxMessageFileBytes)
 	if err != nil {
 		return m.remember(DefaultStopMessage, "default", fmt.Sprintf("message file %s cannot be read (%v); using the default message", m.path, err), nil)
 	}
@@ -102,6 +105,17 @@ func (m *MessageSource) remember(message, source, warning string, info os.FileIn
 		m.loaded = false
 	}
 	return message, source, warning
+}
+
+// stableError strips the path from a *fs.PathError so a retried operation
+// that uses random temporary names yields the same text every time, which
+// lets the runner report the condition once instead of on every poll.
+func stableError(err error) error {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return fmt.Errorf("%s: %w", pe.Op, pe.Err)
+	}
+	return err
 }
 
 // NormalizeMessage trims the text and collapses internal whitespace
@@ -175,42 +189,32 @@ func EnsureMessageFile(path, content string) (created bool, err error) {
 	return true, nil
 }
 
-// readSmallFile reads at most limit bytes from path and fails if the file
-// is larger than that.
-func readSmallFile(path string, limit int64) ([]byte, error) {
+// readPrefix reads at most limit bytes from path. Only regular files are
+// read: opening a FIFO or a device could block the poll loop forever.
+func readPrefix(path string, limit int64) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	buf := make([]byte, limit+1)
-	n, err := readFull(f, buf)
+	return io.ReadAll(io.LimitReader(f, limit))
+}
+
+// readSmallFile reads path and fails if the file is larger than limit.
+func readSmallFile(path string, limit int64) ([]byte, error) {
+	data, err := readPrefix(path, limit+1)
 	if err != nil {
 		return nil, err
 	}
-	if int64(n) > limit {
+	if int64(len(data)) > limit {
 		return nil, fmt.Errorf("file is larger than %d bytes", limit)
 	}
-	return buf[:n], nil
-}
-
-func readFull(f *os.File, buf []byte) (int, error) {
-	total := 0
-	for total < len(buf) {
-		n, err := f.Read(buf[total:])
-		total += n
-		if err != nil {
-			if errors.Is(err, os.ErrClosed) {
-				return total, err
-			}
-			if err.Error() == "EOF" {
-				return total, nil
-			}
-			return total, err
-		}
-		if n == 0 {
-			break
-		}
-	}
-	return total, nil
+	return data, nil
 }

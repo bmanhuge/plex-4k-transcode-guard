@@ -1,0 +1,13 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+# s6 finish script: $1 is the run script's exit status (256 when killed by a
+# signal). Exit status 64 means the guard cannot work with this container's
+# configuration; exiting 125 here tells s6-supervise to leave the service
+# down instead of restarting it every second, so `s6-svstat` truthfully
+# reports "down" and the container log carries a single explanation.
+
+if [[ "${1:-0}" == "64" ]]; then
+    echo "[plex-4k-guard] not restarting: fix the PLEX_4K_GUARD_* environment or the mod installation and recreate the container"
+    exit 125
+fi
+exit 0

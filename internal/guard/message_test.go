@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -100,9 +101,28 @@ func TestMessageUnreadableFileUsesDefault(t *testing.T) {
 
 func TestMessageMissingDirectoryUsesDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing", "msg.txt")
-	msg, source, warn := NewMessageSource(path).Message()
+	ms := NewMessageSource(path)
+	msg, source, warn := ms.Message()
 	if msg != DefaultStopMessage || source != "default" || !strings.Contains(warn, "could not be created") {
 		t.Fatalf("got msg=%q source=%q warn=%q", msg, source, warn)
+	}
+	// The warning text must be stable across retries so it is logged once.
+	if _, _, again := ms.Message(); again != warn {
+		t.Fatalf("warning text changed between calls:\n%s\n%s", warn, again)
+	}
+	if strings.Contains(warn, ".tmp") {
+		t.Fatalf("warning leaks the random temp name: %s", warn)
+	}
+}
+
+func TestMessageHugeFileIsTruncatedNotReplaced(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "msg.txt")
+	if err := os.WriteFile(path, []byte("Custom "+strings.Repeat("x", 100<<10)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	msg, source, warn := NewMessageSource(path).Message()
+	if source != "file" || !strings.HasPrefix(msg, "Custom x") || len([]rune(msg)) != MaxMessageLength || !strings.Contains(warn, "truncated") {
+		t.Fatalf("got source=%q len=%d warn=%q", source, len([]rune(msg)), warn)
 	}
 }
 
@@ -154,6 +174,24 @@ func TestEnsureMessageFileDoesNotOverwrite(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if string(data) != "keep" {
 		t.Fatalf("existing file modified: %q", data)
+	}
+}
+
+func TestMessageRejectsNonRegularFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fifo")
+	if err := syscall.Mkfifo(path, 0o644); err != nil {
+		t.Skipf("mkfifo: %v", err)
+	}
+	done := make(chan struct{})
+	var msg, source, warn string
+	go func() { msg, source, warn = NewMessageSource(path).Message(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("reading a FIFO must not block")
+	}
+	if msg != DefaultStopMessage || source != "default" || !strings.Contains(warn, "not a regular file") {
+		t.Fatalf("got msg=%q source=%q warn=%q", msg, source, warn)
 	}
 }
 

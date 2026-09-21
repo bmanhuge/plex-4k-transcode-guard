@@ -14,6 +14,7 @@ concurrency:
 
 env:
   STATICCHECK_VERSION: "2025.1.1"
+  GOVULNCHECK_VERSION: "v1.8.0"
 
 jobs:
   test:
@@ -45,10 +46,10 @@ jobs:
         run: go run "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" ./...
 
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
 
       - name: shellcheck
-        run: shellcheck -s bash root/etc/s6-overlay/s6-rc.d/*/run scripts/*.sh contrib/*.sh
+        run: make shellcheck
 
       - name: Unit tests (race)
         run: go test -race -count=1 -timeout 10m ./...
@@ -56,6 +57,7 @@ jobs:
       - name: Verify s6 layout and permissions
         run: |
           set -euo pipefail
+          test -x root/etc/s6-overlay/s6-rc.d/svc-mod-plex-4k-guard/finish
           for svc in init-mod-plex-4k-guard svc-mod-plex-4k-guard; do
             test -x "root/etc/s6-overlay/s6-rc.d/${svc}/run"
             test -f "root/etc/s6-overlay/s6-rc.d/${svc}/type"
@@ -141,11 +143,13 @@ jobs:
           docker image inspect plex-4k-transcode-guard:ci-amd64 --format '{{json .Config.Labels}}' | jq .
           docker image inspect plex-4k-transcode-guard:ci-amd64 --format '{{json .Config.Labels}}' | jq -e '."org.opencontainers.image.source" == "https://github.com/bmanhuge/plex-4k-transcode-guard"' >/dev/null
           docker image inspect plex-4k-transcode-guard:ci-amd64 --format '{{json .Config.Labels}}' | jq -e '."org.opencontainers.image.licenses" == "MIT"' >/dev/null
-          id="$(docker create plex-4k-transcode-guard:ci-amd64 /nonexistent)"
-          mkdir -p modroot
-          docker export "${id}" | tar -x -C modroot
-          docker rm "${id}" >/dev/null
+          # The mod root for the sideload test is the image layer itself, not a
+          # `docker export` (which adds /etc/hosts and other runtime stubs).
+          docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+            --build-arg "VERSION=ci-${GITHUB_SHA}" --build-arg "REVISION=${GITHUB_SHA}" \
+            --output type=local,dest=modroot .
           find modroot -type f -printf '%m %u %p\n' | sort
+          test "$(find modroot -mindepth 1 -maxdepth 1 | sort | tr '\n' ' ')" = "modroot/etc modroot/usr "
           test -x modroot/usr/local/bin/plex-4k-guard
           test "$(stat -c %a modroot/etc/s6-overlay/s6-rc.d/svc-mod-plex-4k-guard/run)" = "755"
           modroot/usr/local/bin/plex-4k-guard --version

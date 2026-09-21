@@ -61,8 +61,11 @@ docker create --name "${FAKE}" --add-host localhost:127.0.0.1 "${SIDECAR_IMAGE}"
 docker cp "${WORK}/fakeplex" "${FAKE}:/fakeplex"
 docker cp "${FIXTURES}" "${FAKE}:/fixtures"
 docker start "${FAKE}" >/dev/null
-sleep 1
-grep -q "listening on" <<<"$(fake_logs)" || { fake_logs; fail "fakeplex did not start"; }
+deadline=$(( $(date +%s) + 60 ))
+until grep -q "listening on" <<<"$(fake_logs)"; do
+    (( $(date +%s) < deadline )) || { fake_logs; fail "fakeplex did not start"; }
+    sleep 1
+done
 
 # 2. Mod source.
 MOD_ENV=()
@@ -70,6 +73,12 @@ case "${MOD_SOURCE}" in
     sideload:*)
         DIR="${MOD_SOURCE#sideload:}"
         [[ -d "${DIR}/etc/s6-overlay" ]] || fail "sideload dir ${DIR} does not look like a mod root"
+        # A `docker export` tree carries runtime stubs (/etc/hosts, /etc/resolv.conf,
+        # /.dockerenv, /dev) that the loader would copy over the container's own
+        # files. The tree must be the image layer itself (buildx --output type=local).
+        for stub in .dockerenv etc/hosts etc/resolv.conf etc/hostname etc/mtab dev proc sys; do
+            [[ ! -e "${DIR}/${stub}" ]] || fail "sideload dir ${DIR} contains runtime stub ${stub}; build it with 'docker buildx build --output type=local,dest=DIR .' not docker export"
+        done
         MOD_ENV=(-e DOCKER_MODS=plex-4k-transcode-guard -e DOCKER_MODS_SIDELOAD=true)
         ;;
     registry:*)
@@ -120,10 +129,10 @@ wait_for_log() {
 }
 
 log "waiting for the loader to apply the mod"
-wait_for_log "[mod-init] plex-4k-guard"
-grep -F "[mod-init]" <<<"$(plex_logs)" | sed -n '1,12p' 
+wait_for_log "installed; see the [plex-4k-guard] log lines"
+grep -F "[mod-init]" <<<"$(plex_logs)" | sed -n '1,12p'
 log "waiting for the guard to start (dry-run)"
-wait_for_log "[plex-4k-guard]"
+wait_for_log "INFO starting version="
 wait_for_log "would terminate (dry-run)"
 grep -F "[plex-4k-guard]" <<<"$(plex_logs)" | grep -E "starting|effective mode|stop message loaded|4K video transcode detected|would terminate" | sed -n '1,8p'
 

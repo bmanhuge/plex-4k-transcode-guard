@@ -1,8 +1,9 @@
 #!/usr/bin/with-contenv bash
 # shellcheck shell=bash
 # One-shot init for the plex-4k-transcode-guard Docker Mod. It only reports
-# what will run; it never fails, because a failing init-mod-* oneshot would
-# keep every later service (including Plex itself) from starting.
+# what is installed; it never fails, because a failing init-mod-* oneshot
+# would keep every later service (including Plex itself) from starting. The
+# effective mode is stated by the guard's own "effective mode" log line.
 
 BIN="/usr/local/bin/plex-4k-guard"
 
@@ -11,13 +12,5 @@ if [[ ! -x "${BIN}" ]]; then
     exit 0
 fi
 
-VERSION="$("${BIN}" --version 2>/dev/null || echo "plex-4k-guard unknown")"
-MODE="enforce"
-if [[ "${PLEX_4K_GUARD_DRY_RUN,,}" =~ ^(1|true|yes|on)$ ]]; then
-    MODE="dry-run"
-fi
-echo "[mod-init] ${VERSION} installed; baseline mode from environment: ${MODE}"
-if [[ -n "${PLEX_4K_GUARD_MODE_FILE:-}" ]]; then
-    echo "[mod-init] plex-4k-guard: runtime mode override file enabled at ${PLEX_4K_GUARD_MODE_FILE}"
-fi
+echo "[mod-init] $("${BIN}" --version 2>/dev/null || echo "plex-4k-guard unknown") installed; see the [plex-4k-guard] log lines for the effective mode"
 exit 0

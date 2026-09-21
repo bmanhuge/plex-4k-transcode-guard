@@ -181,7 +181,8 @@ The reason shown in the Plex client comes from `/config/4k-stop-message.txt`.
   is logged once, and the file is left untouched.
 - **Unreadable** (permissions) or **not creatable** (`/config` missing):
   the built-in default is sent and a warning is logged once.
-- Longer than 1000 characters: truncated with a warning.
+- Longer than 1000 characters: truncated with a warning (only the first
+  64 KiB of the file are read).
 
 The exact bytes sent are visible in the log line for each action
 (`reason="..."`) and in the request query as
@@ -267,6 +268,7 @@ Repository checks (also run by CI on every pull request):
 make lint            # gofmt, go vet, staticcheck
 make race            # unit tests with the race detector
 make image verify-image
+docker buildx build --output type=local,dest=modroot .        # the mod's root filesystem
 MOD_SOURCE=sideload:$PWD/modroot ./scripts/e2e-sideload.sh   # real Plex image + fake Plex API
 ```
 
@@ -291,7 +293,7 @@ handling, backoff, cooldown, mode-file overrides and graceful shutdown.
 
 Never stopped: sessions without a `TranscodeSession`; sessions whose video
 decision is `copy` (direct stream) even if audio or subtitles are
-transcoded; `<Track>`/`<Photo>` sessions; video transcodes whose matched
+transcoded; `<Track>`/`<Photo>` sessions; Live TV sessions; video transcodes whose matched
 library version is below 3840x2160 and not labelled 4k/2160/uhd; sessions
 whose library item cannot be fetched or has mixed-resolution versions with
 no matching id; sessions without a `<Session id>` (logged as a warning).
@@ -303,8 +305,8 @@ Limitations:
 - It relies on Plex marking the streaming version with `selected="1"` and
   on `/library/metadata` being available (a library scan removing the item
   mid-stream yields "cannot resolve source media" and no action).
-- Live TV / DVR sessions usually have no library metadata and are therefore
-  never stopped.
+- Live TV / DVR sessions (`live="1"`) are never stopped; they have no
+  library item to resolve a source from.
 - Plex's terminate endpoint requires Plex Pass on the server account; the
   request is still made and its HTTP status is logged.
 - Hardware "4K to 4K" transcodes (tone-mapping, bitrate reduction with a

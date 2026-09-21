@@ -28,10 +28,10 @@ func (e *HTTPError) Error() string {
 // maxResponseBytes bounds every response body read from Plex.
 const maxResponseBytes = 16 << 20
 
-// TokenProvider supplies the Plex token for authenticated requests.
+// TokenProvider supplies the Plex token for authenticated requests. It is
+// consulted for every request, so a rotated token takes effect immediately.
 type TokenProvider interface {
 	Token() (string, error)
-	Invalidate()
 }
 
 // PlexAPI is the subset of the Plex HTTP API used by the guard. It is an
@@ -80,8 +80,15 @@ func NewClient(baseURL string, timeout time.Duration, tokens TokenProvider, vers
 		ForceAttemptHTTP2:     false,
 	}
 	return &Client{
-		base:    u,
-		http:    &http.Client{Transport: transport, Timeout: timeout},
+		base: u,
+		http: &http.Client{
+			Transport: transport,
+			Timeout:   timeout,
+			// Never follow redirects: the token must only ever reach the
+			// configured server, and a redirected terminate must not be
+			// replayed elsewhere. A 3xx surfaces as an HTTPError.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
 		tokens:  tokens,
 		product: "plex-4k-transcode-guard",
 		version: version,
@@ -99,13 +106,14 @@ func (c *Client) Sessions(ctx context.Context) ([]byte, error) {
 	return c.get(ctx, "sessions", "/status/sessions", nil, true)
 }
 
-// Metadata returns the raw XML of /library/metadata/{ratingKey}.
+// Metadata returns the raw XML of /library/metadata/{ratingKey}. The key is
+// placed in the path unescaped; url.URL.String escapes it exactly once.
 func (c *Client) Metadata(ctx context.Context, ratingKey string) ([]byte, error) {
 	ratingKey = strings.TrimSpace(ratingKey)
 	if ratingKey == "" || strings.ContainsAny(ratingKey, "/?#") {
 		return nil, fmt.Errorf("metadata: invalid rating key %q", ratingKey)
 	}
-	return c.get(ctx, "metadata", "/library/metadata/"+url.PathEscape(ratingKey), nil, true)
+	return c.get(ctx, "metadata", "/library/metadata/"+ratingKey, nil, true)
 }
 
 // Terminate stops a session through GET /status/sessions/terminate with the
@@ -152,19 +160,20 @@ func (c *Client) get(ctx context.Context, op, path string, query url.Values, wit
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		// Drain a little so the connection can be reused, then discard.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, fmt.Errorf("%s: %w", op, ErrUnauthorized)
+		}
+		return nil, &HTTPError{Op: op, Status: resp.StatusCode}
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("%s: reading response: %w", op, err)
 	}
 	if len(body) > maxResponseBytes {
 		return nil, fmt.Errorf("%s: response larger than %d bytes", op, maxResponseBytes)
-	}
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
-		c.tokens.Invalidate()
-		return nil, fmt.Errorf("%s: %w", op, ErrUnauthorized)
-	case resp.StatusCode < 200 || resp.StatusCode > 299:
-		return nil, &HTTPError{Op: op, Status: resp.StatusCode}
 	}
 	return body, nil
 }

@@ -82,6 +82,8 @@ func TestLoadConfigInvalid(t *testing.T) {
 		{"timeout above max", EnvHTTPTimeout, "61s"},
 		{"cooldown above max", EnvCooldown, "2h"},
 		{"cooldown negative", EnvCooldown, "-1s"},
+		{"cooldown nan", EnvCooldown, "NaN"},
+		{"cooldown inf", EnvCooldown, "Inf"},
 		{"url scheme", EnvPlexURL, "ftp://127.0.0.1"},
 		{"url credentials", EnvPlexURL, "http://user:pw@127.0.0.1:32400"},
 		{"url query", EnvPlexURL, "http://127.0.0.1:32400/?x=1"},

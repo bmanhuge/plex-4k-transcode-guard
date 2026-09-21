@@ -10,8 +10,6 @@ type SourceMedia struct {
 	Width           int
 	Height          int
 	VideoResolution string
-	Container       string
-	VideoCodec      string
 }
 
 // Dimensions renders "3840x2160" or "?" when unknown.
@@ -45,8 +43,6 @@ func ParseMetadataMedia(data []byte) ([]SourceMedia, error) {
 				Width:           xm.int("width"),
 				Height:          xm.int("height"),
 				VideoResolution: xm.get("videoResolution"),
-				Container:       xm.get("container"),
-				VideoCodec:      xm.get("videoCodec"),
 			})
 		}
 	}

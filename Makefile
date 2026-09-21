@@ -33,7 +33,7 @@ staticcheck:
 	go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
 
 shellcheck:
-	shellcheck -s bash root/etc/s6-overlay/s6-rc.d/*/run contrib/*.sh
+	shellcheck -s bash root/etc/s6-overlay/s6-rc.d/*/run root/etc/s6-overlay/s6-rc.d/*/finish scripts/*.sh contrib/*.sh
 
 lint: fmt vet staticcheck
 

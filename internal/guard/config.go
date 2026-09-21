@@ -7,6 +7,7 @@ package guard
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -177,7 +178,7 @@ func parseBool(name, raw string) (bool, error) {
 func parseDuration(name, raw string, minimum, maximum time.Duration) (time.Duration, error) {
 	var d time.Duration
 	if secs, err := strconv.ParseFloat(raw, 64); err == nil {
-		if secs < 0 || secs > float64(maximum/time.Second)+1 {
+		if math.IsNaN(secs) || math.IsInf(secs, 0) || secs < 0 || secs > float64(maximum/time.Second)+1 {
 			return 0, fmt.Errorf("%s: %q is out of range (%s to %s)", name, raw, minimum, maximum)
 		}
 		d = time.Duration(secs * float64(time.Second))
