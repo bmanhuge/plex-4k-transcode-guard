@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="1" librarySectionID="2" librarySectionTitle="Movies">
+<Video ratingKey="700001" key="/library/metadata/700001" type="movie" title="Upscaled Output Movie" duration="6056896">
+<Media id="7001" duration="6056896" bitrate="8000" width="1920" height="1080" aspectRatio="1.78" audioChannels="6" audioCodec="ac3" videoCodec="h264" videoResolution="1080" container="mkv" videoFrameRate="24p" videoProfile="high">
+<Part id="7002" key="/library/parts/7002/1/file.mkv" duration="6056896" file="/media/Movies/Upscaled Output Movie.mkv" size="6000000000" container="mkv" />
+</Media>
+</Video>
+</MediaContainer>

@@ -1,0 +1,30 @@
+# Example: LinuxServer.io Plex with the 4K transcode guard applied as a
+# Docker Mod. Append the mod to DOCKER_MODS with a "|" if you already load
+# other mods. Start with PLEX_4K_GUARD_DRY_RUN=true, read the logs, then
+# switch to enforcement.
+services:
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - VERSION=docker
+      # Existing mods stay first; the guard is appended with "|".
+      - DOCKER_MODS=ghcr.io/bmanhuge/plex-4k-transcode-guard:latest
+      # Dry-run first. Remove (or set false) to enforce.
+      - PLEX_4K_GUARD_DRY_RUN=true
+      # Optional tuning (defaults shown).
+      - PLEX_4K_GUARD_POLL_INTERVAL=10s
+      - PLEX_4K_GUARD_HTTP_TIMEOUT=5s
+      - PLEX_4K_GUARD_COOLDOWN=60s
+      # Optional: allow flipping enforce/dry-run/off at runtime by writing
+      # /config/4k-guard-mode inside the container (see README).
+      # - PLEX_4K_GUARD_MODE_FILE=/config/4k-guard-mode
+    volumes:
+      - /path/to/plex/config:/config
+      - /path/to/media:/media
+    ports:
+      - "32400:32400"
+    restart: unless-stopped

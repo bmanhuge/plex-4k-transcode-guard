@@ -1,0 +1,22 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+# Long-running service for the plex-4k-transcode-guard Docker Mod. The guard
+# waits for Plex itself, so this script does not need to. Exit status 64
+# (missing binary or invalid configuration) is turned into a permanent
+# "down" by the finish script so s6 does not restart a service that cannot
+# work until the container is recreated.
+
+BIN="/usr/local/bin/plex-4k-guard"
+
+if [[ ! -x "${BIN}" ]]; then
+    echo "[plex-4k-guard] binary missing at ${BIN}; the guard stays down"
+    exit 64
+fi
+
+# Mirror svc-plex: run as the container's abc user (root when PUID=0) unless
+# the image runs rootless, in which case we are already the right user.
+if [[ -z "${LSIO_NON_ROOT_USER:-}" ]]; then
+    exec s6-setuidgid abc "${BIN}"
+else
+    exec "${BIN}"
+fi

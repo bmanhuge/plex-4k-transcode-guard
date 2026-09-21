@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="1" librarySectionID="2" librarySectionTitle="Movies">
+<Video ratingKey="800001" key="/library/metadata/800001" type="movie" title="Two Version Movie" duration="6056896">
+<Media id="9001" duration="6056896" bitrate="8000" width="1920" height="1080" audioChannels="6" audioCodec="ac3" videoCodec="h264" videoResolution="1080" container="mkv">
+<Part id="9011" key="/library/parts/9011/1/file.mkv" file="/media/Movies/Two Version Movie - 1080p.mkv" container="mkv" />
+</Media>
+<Media id="9002" duration="6056896" bitrate="30000" width="3840" height="2160" audioChannels="6" audioCodec="eac3" videoCodec="hevc" videoResolution="4k" container="mkv">
+<Part id="9012" key="/library/parts/9012/1/file.mkv" file="/media/Movies/Two Version Movie - 2160p.mkv" container="mkv" />
+</Media>
+</Video>
+</MediaContainer>

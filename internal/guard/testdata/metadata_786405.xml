@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="1" librarySectionID="2" librarySectionTitle="TV">
+<Video ratingKey="786405" key="/library/metadata/786405" type="episode" title="Episode Six" grandparentTitle="Example Show" parentTitle="Season 1" index="6" parentIndex="1" duration="2581824">
+<Media id="1477136" duration="2581824" bitrate="3442" width="1920" height="1080" aspectRatio="1.78" audioChannels="6" audioCodec="eac3" videoCodec="av1" videoResolution="1080" container="mkv" videoFrameRate="PAL" videoProfile="main">
+<Part id="1477948" key="/library/parts/1477948/1657662300/file.mkv" duration="2581824" file="/media/TV/Example Show/S01E06.mkv" size="1110841797" container="mkv" videoProfile="main" />
+</Media>
+</Video>
+</MediaContainer>

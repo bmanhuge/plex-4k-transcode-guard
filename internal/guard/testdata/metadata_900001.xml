@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="1" librarySectionID="4" librarySectionTitle="Movies (4K)">
+<Video ratingKey="900001" key="/library/metadata/900001" type="movie" title="Unselected Media Movie" duration="6056896">
+<Media id="9101" duration="6056896" bitrate="30000" width="3840" height="2160" audioChannels="6" audioCodec="eac3" videoCodec="hevc" videoResolution="4k" container="mkv">
+<Part id="9111" key="/library/parts/9111/1/file.mkv" file="/media/Movies/movies4k/Unselected Media Movie - A.mkv" container="mkv" />
+</Media>
+<Media id="9102" duration="6056896" bitrate="28000" width="3840" height="1600" audioChannels="6" audioCodec="eac3" videoCodec="hevc" videoResolution="4k" container="mkv">
+<Part id="9112" key="/library/parts/9112/1/file.mkv" file="/media/Movies/movies4k/Unselected Media Movie - B.mkv" container="mkv" />
+</Media>
+</Video>
+</MediaContainer>
