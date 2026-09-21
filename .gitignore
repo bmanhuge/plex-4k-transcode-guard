@@ -1,0 +1,18 @@
+# Build outputs
+/bin/
+/dist/
+/root/usr/
+*.test
+*.out
+coverage.*
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local tooling state
+.serena/
+/.env
+/.env.*

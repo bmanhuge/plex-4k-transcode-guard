@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  STATICCHECK_VERSION: "2025.1.1"
+
+jobs:
+  test:
+    name: Test and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          set -euo pipefail
+          out="$(gofmt -l .)"
+          if [[ -n "$out" ]]; then echo "$out"; echo "gofmt: files need formatting"; exit 1; fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: staticcheck
+        run: go run "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" ./...
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+      - name: shellcheck
+        run: shellcheck -s bash root/etc/s6-overlay/s6-rc.d/*/run scripts/*.sh contrib/*.sh
+
+      - name: Unit tests (race)
+        run: go test -race -count=1 -timeout 10m ./...
+
+      - name: Verify s6 layout and permissions
+        run: |
+          set -euo pipefail
+          for svc in init-mod-plex-4k-guard svc-mod-plex-4k-guard; do
+            test -x "root/etc/s6-overlay/s6-rc.d/${svc}/run"
+            test -f "root/etc/s6-overlay/s6-rc.d/${svc}/type"
+            test -f "root/etc/s6-overlay/s6-rc.d/user/contents.d/${svc}"
+          done
+          test "$(cat root/etc/s6-overlay/s6-rc.d/init-mod-plex-4k-guard/type)" = oneshot
+          test "$(cat root/etc/s6-overlay/s6-rc.d/svc-mod-plex-4k-guard/type)" = longrun
+          test -f root/etc/s6-overlay/s6-rc.d/init-mods-end/dependencies.d/init-mod-plex-4k-guard
+          test -f root/etc/s6-overlay/s6-rc.d/svc-mod-plex-4k-guard/dependencies.d/init-services
+          test -f root/etc/s6-overlay/s6-rc.d/init-mod-plex-4k-guard/dependencies.d/init-mods
+          ! grep -rIl "PlexOnlineToken=\"[A-Za-z0-9_-]\{15,\}\"" --exclude-dir=.git --exclude-dir=testdata . || (echo "possible token in tree" && exit 1)
+
+      - name: Cross-compile binaries
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_SHA::7}"
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" go build -trimpath -buildvcs=false \
+              -ldflags "-s -w -X main.version=${VERSION}" -o "dist/plex-4k-guard-linux-${arch}" ./cmd/plex-4k-guard
+          done
+          file dist/*
+          ./dist/plex-4k-guard-linux-amd64 --version
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: binaries-${{ github.sha }}
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  image:
+    name: Build image and run end-to-end
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build multi-arch image (no push)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          provenance: false
+          sbom: false
+          build-args: |
+            VERSION=ci-${{ github.sha }}
+            REVISION=${{ github.sha }}
+          tags: plex-4k-transcode-guard:ci
+
+      - name: Load amd64 image and verify the single-layer contract
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          sbom: false
+          build-args: |
+            VERSION=ci-${{ github.sha }}
+            REVISION=${{ github.sha }}
+          tags: plex-4k-transcode-guard:ci-amd64
+
+      - name: Inspect image
+        run: |
+          set -euo pipefail
+          layers="$(docker image inspect plex-4k-transcode-guard:ci-amd64 --format '{{len .RootFS.Layers}}')"
+          test "${layers}" = "1" || { echo "expected 1 layer, got ${layers}"; exit 1; }
+          docker image inspect plex-4k-transcode-guard:ci-amd64 --format '{{json .Config.Labels}}' | jq .
+          docker image inspect plex-4k-transcode-guard:ci-amd64 --format '{{json .Config.Labels}}' | jq -e '."org.opencontainers.image.source" == "https://github.com/bmanhuge/plex-4k-transcode-guard"' >/dev/null
+          docker image inspect plex-4k-transcode-guard:ci-amd64 --format '{{json .Config.Labels}}' | jq -e '."org.opencontainers.image.licenses" == "MIT"' >/dev/null
+          id="$(docker create plex-4k-transcode-guard:ci-amd64 /nonexistent)"
+          mkdir -p modroot
+          docker export "${id}" | tar -x -C modroot
+          docker rm "${id}" >/dev/null
+          find modroot -type f -printf '%m %u %p\n' | sort
+          test -x modroot/usr/local/bin/plex-4k-guard
+          test "$(stat -c %a modroot/etc/s6-overlay/s6-rc.d/svc-mod-plex-4k-guard/run)" = "755"
+          modroot/usr/local/bin/plex-4k-guard --version
+
+      - name: End-to-end inside lscr.io/linuxserver/plex (sideloaded mod)
+        run: MOD_SOURCE="sideload:${PWD}/modroot" ./scripts/e2e-sideload.sh
+
+  recreate-helper:
+    name: Test contrib/recreate-with-mod.sh
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Run helper test
+        run: ./contrib/test-recreate.sh

@@ -1,0 +1,17 @@
+.git
+.github
+.serena
+.gitignore
+.dockerignore
+bin/
+dist/
+docs/
+examples/
+contrib/
+scripts/
+tools/
+*.md
+LICENSE
+Makefile
+**/*_test.go
+internal/guard/testdata/

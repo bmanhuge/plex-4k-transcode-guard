@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="1" allowSync="1" identifier="com.plexapp.plugins.library" librarySectionID="4" librarySectionTitle="Movies (4K)" mediaTagPrefix="/system/bundle/media/flags/" mediaTagVersion="1789000000">
+<Video ratingKey="769612" key="/library/metadata/769612" guid="plex://movie/69f18cc5b0fd1b2654057eb8" studio="Example Studio" type="movie" title="Example Movie UHD" contentRating="R" summary="Fixture." rating="8.0" year="2026" duration="6056896" addedAt="1787015041">
+<Media id="1399271" duration="6056896" bitrate="11628" width="3840" height="2160" aspectRatio="1.78" audioChannels="6" audioCodec="eac3" videoCodec="hevc" videoResolution="4k" container="mkv" videoFrameRate="24p" videoProfile="main 10" hasVoiceActivity="0">
+<Part id="1400083" key="/library/parts/1400083/1786628322/file.mkv" duration="6056896" file="/media/Movies/movies4k/Example Movie UHD.mkv" size="8804017633" container="mkv" videoProfile="main 10">
+<Stream id="7539735" streamType="1" default="1" codec="hevc" index="0" bitrate="10000" bitDepth="10" height="2160" width="3840" displayTitle="4K (HEVC Main 10)" />
+</Part>
+</Media>
+<Genre id="1" tag="Fixture" />
+</Video>
+</MediaContainer>

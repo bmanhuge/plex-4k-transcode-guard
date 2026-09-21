@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="9">
+<Video addedAt="1787015041" art="/library/metadata/769612/art/1" duration="6056896" guid="plex://movie/69f18cc5b0fd1b2654057eb8" key="/library/metadata/769612" librarySectionID="4" librarySectionKey="/library/sections/4" librarySectionTitle="Movies (4K)" ratingKey="769612" sessionKey="7" title="Example Movie UHD" type="movie" viewOffset="3883000" year="2026">
+<Media hasVoiceActivity="0" id="1399271" videoProfile="main 10" audioChannels="6" audioCodec="aac" bitrate="3772" container="mp4" duration="6056896" height="720" optimizedForStreaming="1" protocol="dash" videoCodec="hevc" videoFrameRate="24p" videoResolution="720p" width="1280" selected="1">
+<Part id="1400083" videoProfile="main 10" bitrate="3772" container="mp4" duration="6056896" height="720" optimizedForStreaming="1" protocol="dash" width="1280" decision="transcode" selected="1">
+<Stream bitDepth="10" bitrate="3319" codec="hevc" colorTrc="bt709" default="1" displayTitle="4K (HEVC Main 10)" extendedDisplayTitle="4K (HEVC Main 10)" frameRate="23.976" height="720" id="7539735" language="English" languageCode="eng" streamType="1" width="1280" decision="transcode" location="segments-video" />
+<Stream bitrate="384" channels="6" codec="aac" default="1" displayTitle="English (EAC3 5.1)" id="7539736" language="English" languageCode="eng" selected="1" streamType="2" decision="transcode" location="segments-audio" />
+</Part>
+</Media>
+<User id="101" thumb="https://plex.tv/users/abc/avatar" title="viewer-a" />
+<Player address="10.0.0.5" device="Samsung" machineIdentifier="aaaa-bbbb" model="UE55" platform="Tizen" platformVersion="9" product="Plex for Samsung" profile="Generic" remotePublicAddress="203.0.113.10" state="playing" title="Living Room TV" vendor="Samsung" version="5.94.1" local="0" relayed="0" secure="0" userID="101" />
+<Session id="e6gmj1bjf7jlbz7hu5cqcags" bandwidth="3961" location="wan" />
+<TranscodeSession key="/transcode/sessions/x8nfoe2pybsqmmucxqx2pq22" throttled="1" complete="0" progress="64.1" size="-1" speed="0" error="0" duration="6056896" context="streaming" sourceVideoCodec="hevc" sourceAudioCodec="eac3" videoDecision="transcode" audioDecision="transcode" protocol="dash" container="mp4" videoCodec="hevc" audioCodec="aac" audioChannels="6" transcodeHwRequested="1" transcodeHwDecoding="qsv" transcodeHwEncoding="qsv" transcodeHwFullPipeline="1" timeStamp="1790000000.0" maxOffsetAvailable="3900" minOffsetAvailable="0" width="1280" height="720" />
+</Video>
+<Video addedAt="1741409568" duration="9078737" guid="plex://movie/5d77682985719b001f3a14bd" key="/library/metadata/289113" librarySectionID="4" librarySectionTitle="Movies (4K)" ratingKey="289113" sessionKey="1" title="Direct Play Movie UHD" type="movie" viewOffset="120000" year="2006">
+<Media aspectRatio="2.35" audioChannels="6" audioCodec="eac3" bitrate="18814" container="mkv" duration="9078737" height="1608" id="1421028" videoCodec="hevc" videoFrameRate="24p" videoProfile="main 10" videoResolution="4k" width="3840" selected="1">
+<Part container="mkv" duration="9078737" file="/media/Movies/movies4k/Direct Play Movie UHD.mkv" id="1421584" key="/library/parts/1421584/1163030400/file.mkv" size="21350979823" videoProfile="main 10" decision="directplay" selected="1">
+<Stream bitDepth="10" bitrate="18174" codec="hevc" codedHeight="1608" codedWidth="3840" default="1" displayTitle="4K DoVi/HDR10 (HEVC Main 10)" height="1608" id="1" index="0" streamType="1" width="3840" />
+</Part>
+</Media>
+<User id="102" title="viewer-b" />
+<Player address="10.0.0.6" machineIdentifier="cccc" platform="Android" product="Plex for Amazon FireTV" state="playing" title="Fire TV" local="0" />
+<Session id="85355d4a0003bbd6-com-plexapp-android" bandwidth="39510" location="wan" />
+</Video>
+<Video addedAt="1738121571" duration="2581824" grandparentTitle="Example Show" grandparentRatingKey="219454" index="6" key="/library/metadata/786405" librarySectionID="2" librarySectionTitle="TV" parentIndex="1" parentTitle="Season 1" ratingKey="786405" sessionKey="16" title="Episode Six" type="episode">
+<Media hasVoiceActivity="0" id="1477136" videoProfile="main" audioChannels="6" audioCodec="opus" bitrate="20768" container="mkv" duration="2581824" height="1080" protocol="hls" videoCodec="hevc" videoFrameRate="PAL" videoResolution="1080p" width="1920" selected="1">
+<Part id="1477948" videoProfile="main" bitrate="20768" container="mkv" duration="2581824" height="1080" protocol="hls" width="1920" decision="transcode" selected="1">
+<Stream bitDepth="10" bitrate="20000" codec="hevc" default="1" displayTitle="1080p (AV1)" height="1080" id="2" streamType="1" width="1920" decision="transcode" location="segments-av" />
+</Part>
+</Media>
+<User id="103" title="viewer-c" />
+<Player address="10.0.0.7" machineIdentifier="dddd" platform="Android" product="Plex for Android (TV)" state="playing" title="Shield" local="0" />
+<Session id="8ba94897f066b1ef-com-plexapp-android" bandwidth="21471" location="wan" />
+<TranscodeSession key="/transcode/sessions/8ba94897f066b1ef-com-plexapp-android" throttled="1" complete="0" progress="55.5" speed="0" error="0" duration="2581824" context="streaming" sourceVideoCodec="av1" sourceAudioCodec="eac3" videoDecision="transcode" audioDecision="copy" protocol="hls" container="mkv" videoCodec="hevc" audioCodec="eac3" audioChannels="2" width="1920" height="1080" />
+</Video>
+<Video addedAt="1741079333" duration="6301760" key="/library/metadata/500001" librarySectionID="4" librarySectionTitle="Movies (4K)" ratingKey="500001" sessionKey="20" title="Direct Stream Movie UHD" type="movie">
+<Media audioChannels="8" audioCodec="truehd" bitrate="11110" container="mkv" duration="6301760" height="2160" id="500101" videoCodec="hevc" videoResolution="4k" width="3840" selected="1">
+<Part container="mkv" id="500201" decision="copy" selected="1">
+<Stream codec="hevc" displayTitle="4K HDR10 (HEVC Main 10)" height="2160" id="3" streamType="1" width="3840" decision="copy" />
+<Stream codec="truehd" displayTitle="TrueHD 7.1" id="4" streamType="2" selected="1" decision="transcode" />
+</Part>
+</Media>
+<User id="104" title="viewer-d" />
+<Player address="10.0.0.8" machineIdentifier="eeee" platform="Chrome" product="Plex Web" state="playing" title="Chrome" local="1" />
+<Session id="direct-stream-session-id" bandwidth="12000" location="lan" />
+<TranscodeSession key="/transcode/sessions/ds1" throttled="0" complete="0" progress="10" speed="4" error="0" context="streaming" sourceVideoCodec="hevc" sourceAudioCodec="truehd" videoDecision="copy" audioDecision="transcode" protocol="dash" container="mp4" videoCodec="hevc" audioCodec="aac" audioChannels="2" width="3840" height="2160" />
+</Video>
+<Track addedAt="1700000000" duration="240000" grandparentTitle="Example Artist" key="/library/metadata/600001" librarySectionID="5" librarySectionTitle="Music" parentTitle="Example Album" ratingKey="600001" sessionKey="21" title="Example Song" type="track">
+<Media audioChannels="2" audioCodec="mp3" bitrate="192" container="mp3" duration="240000" id="600101" protocol="http" selected="1">
+<Part container="mp3" id="600201" decision="transcode" selected="1">
+<Stream codec="mp3" displayTitle="MP3 (Stereo)" id="5" streamType="2" selected="1" decision="transcode" />
+</Part>
+</Media>
+<User id="105" title="viewer-e" />
+<Player address="10.0.0.9" machineIdentifier="ffff" platform="iOS" product="Plexamp" state="playing" title="iPhone" local="0" />
+<Session id="music-session-id" bandwidth="200" location="wan" />
+<TranscodeSession key="/transcode/sessions/music1" throttled="0" complete="0" progress="50" speed="10" error="0" context="streaming" sourceAudioCodec="flac" videoDecision="" audioDecision="transcode" protocol="http" container="mp3" audioCodec="mp3" audioChannels="2" />
+</Track>
+<Video addedAt="1787015041" duration="6056896" key="/library/metadata/769612" librarySectionID="4" librarySectionTitle="Movies (4K)" ratingKey="769612" sessionKey="22" title="Example Movie UHD" type="movie">
+<Media id="1399271" audioChannels="6" audioCodec="aac" bitrate="3772" container="mp4" duration="6056896" height="720" protocol="dash" videoCodec="hevc" videoResolution="720p" width="1280" selected="1">
+<Part id="1400083" bitrate="3772" container="mp4" height="720" protocol="dash" width="1280" decision="transcode" selected="1">
+<Stream codec="hevc" displayTitle="4K (HEVC Main 10)" height="720" id="6" streamType="1" width="1280" decision="transcode" />
+</Part>
+</Media>
+<User id="106" title="viewer-f" />
+<Player address="10.0.0.10" machineIdentifier="gggg" platform="Roku" product="Plex for Roku" state="playing" title="Roku" local="0" />
+<TranscodeSession key="/transcode/sessions/nosession1" throttled="0" complete="0" progress="1" speed="1" error="0" context="streaming" sourceVideoCodec="hevc" sourceAudioCodec="eac3" videoDecision="transcode" audioDecision="transcode" protocol="dash" container="mp4" videoCodec="h264" audioCodec="aac" audioChannels="2" width="1920" height="1080" />
+</Video>
+<Video addedAt="1787015041" duration="6056896" key="/library/metadata/700001" librarySectionID="2" librarySectionTitle="Movies" ratingKey="700001" sessionKey="23" title="Upscaled Output Movie" type="movie">
+<Media id="7001" audioChannels="6" audioCodec="aac" bitrate="20000" container="mp4" duration="6056896" height="2160" protocol="dash" videoCodec="hevc" videoResolution="4k" width="3840" selected="1">
+<Part id="7002" bitrate="20000" container="mp4" height="2160" protocol="dash" width="3840" decision="transcode" selected="1">
+<Stream codec="hevc" displayTitle="1080p (H.264)" height="2160" id="7" streamType="1" width="3840" decision="transcode" />
+</Part>
+</Media>
+<User id="107" title="viewer-g" />
+<Player address="10.0.0.11" machineIdentifier="hhhh" platform="tvOS" product="Plex for Apple TV" state="playing" title="Apple TV" local="0" />
+<Session id="upscale-session-id" bandwidth="20000" location="wan" />
+<TranscodeSession key="/transcode/sessions/upscale1" throttled="0" complete="0" progress="5" speed="1" error="0" context="streaming" sourceVideoCodec="h264" sourceAudioCodec="ac3" videoDecision="transcode" audioDecision="transcode" protocol="dash" container="mp4" videoCodec="hevc" audioCodec="aac" audioChannels="6" width="3840" height="2160" />
+</Video>
+<Video addedAt="1787015041" duration="6056896" key="/library/metadata/800001" librarySectionID="2" librarySectionTitle="Movies" ratingKey="800001" sessionKey="24" title="Two Version Movie" type="movie">
+<Media id="9001" audioChannels="6" audioCodec="aac" bitrate="4000" container="mp4" duration="6056896" height="720" protocol="dash" videoCodec="h264" videoResolution="720p" width="1280" selected="1">
+<Part id="9011" bitrate="4000" container="mp4" height="720" protocol="dash" width="1280" decision="transcode" selected="1">
+<Stream codec="h264" displayTitle="1080p (H.264)" height="720" id="8" streamType="1" width="1280" decision="transcode" />
+</Part>
+</Media>
+<Media id="9002" audioChannels="6" audioCodec="eac3" bitrate="30000" container="mkv" duration="6056896" height="2160" videoCodec="hevc" videoResolution="4k" width="3840">
+<Part id="9012" container="mkv" />
+</Media>
+<User id="108" title="viewer-h" />
+<Player address="10.0.0.12" machineIdentifier="iiii" platform="Android" product="Plex for Android (Mobile)" state="playing" title="Phone" local="0" />
+<Session id="two-version-session-id" bandwidth="4000" location="wan" />
+<TranscodeSession key="/transcode/sessions/twoversion1" throttled="0" complete="0" progress="5" speed="2" error="0" context="streaming" sourceVideoCodec="h264" sourceAudioCodec="ac3" videoDecision="transcode" audioDecision="transcode" protocol="dash" container="mp4" videoCodec="h264" audioCodec="aac" audioChannels="2" width="1280" height="720" />
+</Video>
+<Video addedAt="1787015041" duration="6056896" key="/library/metadata/900001" librarySectionID="4" librarySectionTitle="Movies (4K)" ratingKey="900001" sessionKey="25" title="Unselected Media Movie" type="movie">
+<Media id="9101" audioChannels="6" audioCodec="aac" bitrate="4000" container="mp4" duration="6056896" height="720" protocol="dash" videoCodec="h264" videoResolution="720p" width="1280">
+<Part id="9111" bitrate="4000" container="mp4" height="720" protocol="dash" width="1280" decision="transcode">
+<Stream codec="h264" displayTitle="4K (HEVC Main 10)" height="720" id="9" streamType="1" width="1280" decision="transcode" />
+</Part>
+</Media>
+<Media id="9102" audioChannels="6" audioCodec="eac3" bitrate="30000" container="mkv" duration="6056896" height="1600" videoCodec="hevc" videoResolution="4k" width="3840">
+<Part id="9112" container="mkv" />
+</Media>
+<User id="109" title="viewer-i" />
+<Player address="10.0.0.13" machineIdentifier="jjjj" platform="Windows" product="Plex for Windows" state="paused" title="Laptop" local="0" />
+<Session id="unselected-session-id" bandwidth="4000" location="wan" />
+<TranscodeSession key="/transcode/sessions/unselected1" throttled="0" complete="0" progress="5" speed="2" error="0" context="streaming" sourceVideoCodec="hevc" sourceAudioCodec="eac3" videoDecision="transcode" audioDecision="transcode" protocol="dash" container="mp4" videoCodec="h264" audioCodec="aac" audioChannels="2" width="1280" height="720" />
+</Video>
+</MediaContainer>
