@@ -57,9 +57,9 @@ contrib/recreate-with-mod.sh --apply --set PLEX_4K_GUARD_DRY_RUN=true --set PLEX
 
 ```bash
 c=<container>
-docker logs "$c" 2>&1 | grep -F '[mod-init]'            # "Adding ghcr.io/bmanhuge/plex-4k-transcode-guard:latest", "applied to container", "plex-4k-guard vX.Y.Z installed"
+docker logs "$c" 2>&1 | grep -F '[mod-init]'            # "Adding ghcr.io/bmanhuge/plex-4k-transcode-guard:latest", "applied to container", "plex-4k-guard vX.Y.Z installed; see the [plex-4k-guard] log lines"
 docker exec "$c" s6-svstat /run/service/svc-plex        # up
-docker exec "$c" s6-svstat /run/service/svc-mod-plex-4k-guard   # up
+docker exec "$c" s6-svstat /run/service/svc-mod-plex-4k-guard   # up ("down" means the guard refused its configuration; read the ERROR line)
 docker logs "$c" 2>&1 | grep -F '[plex-4k-guard]' | grep -E 'starting|plex is ready|token loaded|stop message loaded|effective mode'
 docker exec "$c" cat /config/4k-stop-message.txt         # default text, created by the guard
 curl -fsS "http://127.0.0.1:<hostport>/identity" >/dev/null && echo plex-ok
@@ -164,3 +164,8 @@ outright, and remove them from the scripts repository in a separate PR.
   cooldown window.
 - `message file ... is blank; using the default message`: someone emptied
   the file; the default text is sent and the file is not modified.
+- `mode file ... running in dry-run until it is fixed or removed`: the
+  override file has unexpected content; the guard never escalates on a bad
+  file, so fix or remove it and the baseline applies again.
+- `media-not-found` (debug level): the streaming version is no longer in
+  the library item (split, re-match, re-scan); that session is left alone.

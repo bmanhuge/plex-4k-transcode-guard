@@ -60,16 +60,23 @@ Plex image. On every poll it:
    against the library item's versions, exactly as Tautulli and
    python-plexapi's `PlexSession.source()` do. A source is 4K when
    `width >= 3840` or `height >= 2160` or `videoResolution` normalises to
-   `4k`, `2160` or `uhd`. If the id does not match, the guard only concludes
-   4K when the item has a single version or every version is 4K; mixed
-   versions and missing metadata always mean "leave it alone".
+   `4k`, `2160` or `uhd`, or when the file is UHD-sized on both axes (at
+   least 3840x1600, or at least 2880x2160), which keeps full side-by-side
+   and over-under 3D 1080p rips out. A session media id that is not among
+   the item's versions (the item was split, re-matched or re-scanned while
+   playing) is never acted on. Only when Plex marks no selected version at
+   all is the item judged by its versions: a single version, or every
+   version being 4K, is conclusive; anything else is left alone. Missing
+   metadata always means "leave it alone".
 5. Terminates a match with `GET
    /status/sessions/terminate?sessionId=<Session id>&reason=<message>`,
    where `sessionId` is the `id` attribute of the session's `<Session>`
    element (not `sessionKey`). This is the call python-plexapi's
    `PlexSession.stop()` and Tautulli's `get_sessions_terminate()` make.
 6. Remembers the session id for the cooldown window so one session is not
-   hit repeatedly while Plex tears it down.
+   hit repeatedly while Plex tears it down. The window is kept per mode, so
+   a session already reported in dry-run is acted on immediately after the
+   switch to enforcement.
 
 Polling uses bounded HTTP timeouts, exponential backoff after failures
 (capped at five minutes), a plain `select`-based sleep (no busy loop),
@@ -124,8 +131,10 @@ GHCR keeps using the cached copy in `/modcache`.
 ## Configuration
 
 All variables are optional and validated strictly; an invalid value is
-logged and the service refuses to start (Plex is unaffected). Durations
-accept Go syntax (`15s`, `1m30s`) or plain seconds (`15`).
+logged once and the service stays down (`s6-svstat
+/run/service/svc-mod-plex-4k-guard` reports `down`) until the container is
+recreated with a valid environment. Plex is unaffected. Durations accept Go
+syntax (`15s`, `1m30s`) or plain seconds (`15`).
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -151,7 +160,7 @@ restarts Plex. When `PLEX_4K_GUARD_MODE_FILE` is set (for example to
 | `dry-run` | Classify and log only. |
 | `enforce` | Terminate matches. |
 | `off` | Do not poll at all. |
-| anything else | Warn once, use the environment baseline. |
+| anything else, or unreadable | Warn once and never escalate: an `enforce` baseline runs as `dry-run`, a `dry-run` baseline stays `dry-run`, until the file is fixed or removed. |
 
 ```bash
 docker exec plex sh -c 'printf enforce > /config/4k-guard-mode'   # go live
@@ -196,9 +205,12 @@ The exact bytes sent are visible in the log line for each action
 2. **Check health.** `docker logs <container> | grep -F '[mod-init]'` shows
    the loader applying the mod and `plex-4k-guard vX.Y.Z installed`;
    `docker logs <container> | grep -F '[plex-4k-guard]'` shows `starting`,
-   `plex is ready`, `plex token loaded` and `stop message loaded`. Plex
-   itself must be unaffected: `docker exec <container> s6-svstat /run/service/svc-plex`
-   reports `up`, and `s6-svstat /run/service/svc-mod-plex-4k-guard` too.
+   `plex is ready`, `plex token loaded`, `effective mode` and `stop message
+   loaded`. Plex itself must be unaffected: `docker exec <container>
+   s6-svstat /run/service/svc-plex` reports `up`, and `s6-svstat
+   /run/service/svc-mod-plex-4k-guard` too. A guard that reports `down`
+   has refused its configuration; the reason is the single `ERROR` line in
+   the log.
 3. **Wait for evidence.** You need at least one log line pair like the one
    in [Sample logs](#sample-logs): `4K video transcode detected` with
    `source=3840x2160/4k` (or `height>=2160`) **and**
@@ -223,11 +235,11 @@ running inside `lscr.io/linuxserver/plex:latest` with the sideloaded mod.
 [mod-init] Running Docker Modification Logic
 [mod-init] Installing plex-4k-transcode-guard from /mods/plex-4k-transcode-guard/
 [mod-init] plex-4k-transcode-guard applied to container
-[mod-init] plex-4k-guard v1.0.0 installed; baseline mode from environment: dry-run
-[plex-4k-guard] 2026-09-21T21:33:10Z INFO starting version=v1.0.0 mode=dry-run dry_run_env=true poll_interval=10s http_timeout=5s cooldown=1m0s plex_url=http://127.0.0.1:32400 preferences_file="/config/Library/Application Support/Plex Media Server/Preferences.xml" message_file=/config/4k-stop-message.txt mode_file=/config/4k-guard-mode
+[mod-init] plex-4k-guard v1.0.0 installed; see the [plex-4k-guard] log lines for the effective mode
+[plex-4k-guard] 2026-09-21T21:33:10Z INFO starting version=v1.0.0 dry_run_env=true poll_interval=10s http_timeout=5s cooldown=1m0s plex_url=http://127.0.0.1:32400 preferences_file="/config/Library/Application Support/Plex Media Server/Preferences.xml" message_file=/config/4k-stop-message.txt mode_file=/config/4k-guard-mode
 [plex-4k-guard] 2026-09-21T21:33:12Z INFO plex is ready attempts=2
-[plex-4k-guard] 2026-09-21T21:33:12Z INFO effective mode mode=dry-run source=env
 [plex-4k-guard] 2026-09-21T21:33:12Z INFO plex token loaded file="/config/Library/Application Support/Plex Media Server/Preferences.xml"
+[plex-4k-guard] 2026-09-21T21:33:12Z INFO effective mode mode=dry-run source=env
 [plex-4k-guard] 2026-09-21T21:33:12Z INFO stop message loaded source=file file=/config/4k-stop-message.txt reason="You are not allowed to transcode 4K content, please play the normal resolution version."
 [plex-4k-guard] 2026-09-21T21:33:12Z INFO 4K video transcode detected key=7 session=e6gmj1bjf7jlbz7hu5cqcags user=viewer-a title="Example Movie UHD" evidence="source=3840x2160/4k transcode=video:transcode,audio:transcode output=1280x720 protocol=dash session_media=1399271/1280x720/720p stream_title=\"4K (HEVC Main 10)\" player=\"Plex for Samsung\" state=playing" detail="source media id=1399271 3840x2160 videoResolution=\"4k\""
 [plex-4k-guard] 2026-09-21T21:33:12Z INFO would terminate (dry-run) session=e6gmj1bjf7jlbz7hu5cqcags key=7 user=viewer-a title="Example Movie UHD" reason="You are not allowed to transcode 4K content, please play the normal resolution version." reason_source=file
@@ -303,8 +315,10 @@ Limitations:
 - It only guards the Plex server inside the same container. One mod
   instance per container.
 - It relies on Plex marking the streaming version with `selected="1"` and
-  on `/library/metadata` being available (a library scan removing the item
-  mid-stream yields "cannot resolve source media" and no action).
+  on `/library/metadata` still listing that version (an item removed,
+  split or re-matched mid-stream yields "cannot resolve source media" or
+  `media-not-found` and no action; failed lookups are retried after a
+  minute).
 - Live TV / DVR sessions (`live="1"`) are never stopped; they have no
   library item to resolve a source from.
 - Plex's terminate endpoint requires Plex Pass on the server account; the
@@ -365,8 +379,8 @@ Suggested order:
   files live in the container layer only.
 - **Fleet-wide, immediately**: the mod only ever acts on the loopback
   Plex API, so stopping the service is enough:
-  `docker exec plex s6-svc -d /run/service/svc-mod-plex-4k-guard` (restarts
-  with the container).
+  `docker exec plex s6-svc -d /run/service/svc-mod-plex-4k-guard` (it comes
+  back with the next container start; `s6-svc -u` restarts it sooner).
 - **Publishing rollback**: re-point `DOCKER_MODS` to an earlier immutable
   tag (`vX.Y.Z` or `sha-<short>`); the loader re-applies the older layer on
   the next container start.
